@@ -1,0 +1,91 @@
+{
+  "title": "Linux Host Overview",
+  "uid": "ops-linux-host-overview",
+  "tags": ["ops-center"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(up{job=\"node_exporter\"}, instance)", "refId": "instance" },
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [{ "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\", instance=~\"$instance\"}[5m])) * 100)", "legendFormat": "CPU %", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Load Average",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "node_load1{instance=~\"$instance\"}", "legendFormat": "load1", "refId": "A" },
+        { "expr": "node_load5{instance=~\"$instance\"}", "legendFormat": "load5", "refId": "B" },
+        { "expr": "node_load15{instance=~\"$instance\"}", "legendFormat": "load15", "refId": "C" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Memory Used %",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
+      "targets": [{ "expr": "(1 - (node_memory_MemAvailable_bytes{instance=~\"$instance\"} / node_memory_MemTotal_bytes{instance=~\"$instance\"})) * 100", "legendFormat": "Memory %", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "title": "Swap Used %",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0 }, "overrides": [] },
+      "targets": [{ "expr": "(1 - (node_memory_SwapFree_bytes{instance=~\"$instance\"} / node_memory_SwapTotal_bytes{instance=~\"$instance\"})) * 100", "legendFormat": "Swap %", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "expr": "time() - node_boot_time_seconds{instance=~\"$instance\"}", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "title": "Failed systemd units",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+      "targets": [{ "expr": "count(node_systemd_unit_state{instance=~\"$instance\", state=\"failed\", value=\"1\"}) OR vector(0)", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "title": "Root Filesystem Used %",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 85 }, { "color": "red", "value": 92 }] } }, "overrides": [] },
+      "targets": [{ "expr": "(1 - (node_filesystem_avail_bytes{instance=~\"$instance\", mountpoint=\"/\"} / node_filesystem_size_bytes{instance=~\"$instance\", mountpoint=\"/\"})) * 100", "refId": "A" }]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+---
+# Installs security updates only. Supports rolling batches via `serial`
+# (defaults to 1 = fully sequential, safest for a homelab).
+- name: Install security updates
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: "{{ batch_size | default(1) }}"
+
+  tasks:
+    - name: RHEL family - install security updates
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        security: true
+        update_only: true
+      register: rhel_result
+
+    - name: Debian family - ensure unattended-upgrades is present
+      when: ansible_os_family == "Debian"
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+        update_cache: true
+
+    - name: Debian family - install security updates
+      when: ansible_os_family == "Debian"
+      ansible.builtin.command: unattended-upgrade -v
+      register: debian_result
+      changed_when: "'Packages that will be upgraded' in debian_result.stdout"
+
+    - name: Report outcome
+      ansible.builtin.debug:
+        msg: "{{ rhel_result.results | default(debian_result.stdout_lines) | default('no changes') }}"

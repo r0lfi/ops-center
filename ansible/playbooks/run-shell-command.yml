@@ -1,0 +1,41 @@
+---
+# Runs an arbitrary shell command on the target host - the General
+# Agent's run_shell_command tool (worker_ai/ai/tools/shell_tools.py).
+# Only ever reached from execute_action_task, after a human has approved
+# the specific command in Ops Center (every run_shell_command call is
+# approval-gated, not just destructive-looking ones - see
+# shell_tools.py's docstring) - over the exact same SSH credential /
+# host-key-pinning path every other playbook in this repo uses.
+# Deliberately unrestricted (unlike every other playbook here) - that is
+# the entire point of this tool; the safety net is the approval gate
+# upstream, not anything in this file. ansible.builtin.shell (not
+# command) is intentional here, not an oversight - the whole point is
+# running arbitrary shell syntax (pipes, redirects, etc).
+- name: Run an arbitrary shell command (General Agent)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Run command
+      # shell_command is loaded via a separate !unsafe-tagged vars file
+      # (worker/tasks.py::_UNSAFE_EXTRAVAR_KEYS), not the plain extravars
+      # dict - a command containing literal Jinja-like syntax (e.g.
+      # docker's --format '{{.State.Status}}') would otherwise get
+      # re-templated by Ansible after substitution and blow up with
+      # "unexpected '.'". See that module's docstring for why (verified:
+      # no amount of restructuring this expression fixes it - the
+      # recursion triggers on the rendered *output* looking templatable).
+      ansible.builtin.shell: "{{ shell_command }}"  # noqa: command-instead-of-shell
+      register: shell_result
+      changed_when: true
+      failed_when: false
+
+    - name: Emit structured query result
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {
+            'rc': shell_result.rc,
+            'stdout': shell_result.stdout,
+            'stderr': shell_result.stderr
+          } | to_json }}

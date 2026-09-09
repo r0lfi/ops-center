@@ -1,0 +1,55 @@
+{
+  "title": "Network",
+  "uid": "ops-network",
+  "tags": ["ops-center"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(up{job=\"node_exporter\"}, instance)", "refId": "instance" },
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Receive Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [{ "expr": "irate(node_network_receive_bytes_total{instance=~\"$instance\", device!=\"lo\"}[5m])", "legendFormat": "{{device}}", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Transmit Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [{ "expr": "irate(node_network_transmit_bytes_total{instance=~\"$instance\", device!=\"lo\"}[5m])", "legendFormat": "{{device}}", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "Errors + Drops",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "irate(node_network_receive_errs_total{instance=~\"$instance\", device!=\"lo\"}[5m])", "legendFormat": "{{device}} rx errors", "refId": "A" },
+        { "expr": "irate(node_network_transmit_errs_total{instance=~\"$instance\", device!=\"lo\"}[5m])", "legendFormat": "{{device}} tx errors", "refId": "B" },
+        { "expr": "irate(node_network_receive_drop_total{instance=~\"$instance\", device!=\"lo\"}[5m])", "legendFormat": "{{device}} rx drops", "refId": "C" }
+      ]
+    }
+  ]
+}

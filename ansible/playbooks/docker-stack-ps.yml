@@ -1,0 +1,26 @@
+---
+# Lists the containers belonging to one stack on a remote managed host, via
+# the compose project label (same approach as
+# security/docker_control.py's list_stack_containers - full `docker
+# inspect` output, not `docker compose ps`'s own leaner format, so this
+# matches the same JSON shape whether the stack is local or remote).
+- name: List a stack's containers
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Find containers for this compose project
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          docker ps -aq --filter "label=com.docker.compose.project={{ stack_name }}" | xargs -r docker inspect
+        executable: /bin/bash
+      register: result
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'containers':
+          ((result.stdout | from_json) if (result.rc == 0 and result.stdout) else [])} | to_json }}

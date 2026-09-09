@@ -1,0 +1,63 @@
+---
+# Deploys (or redeploys) a docker-compose stack on a remote managed host -
+# remote equivalent of security-worker's deploy_stack() for ops-host.
+# Same "unrestricted container creation, admin-only, audit-logged" risk
+# profile as the local path - see docs/security.md. stack_name is
+# validated server-side (same pattern as _validate_stack_name) before this
+# ever runs; compose_yaml is written verbatim, never templated/interpreted
+# by Ansible itself.
+- name: Deploy a docker-compose stack
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether this host has a dedicated /data volume
+      # Prefer /data/ops-center-stacks (alongside this host's other
+      # persistent state, e.g. docker-host-02's /data/compose, /data/docker)
+      # when one exists - falls back to the SSH user's home directory on
+      # hosts without one (e.g. edge-host). Neither path needs root: /data
+      # is user-writable on every host that has it (confirmed on
+      # docker-host-02/example-nixadm-01), same as home always is.
+      ansible.builtin.stat:
+        path: /data
+      register: data_dir
+
+    - name: Resolve the stacks root
+      ansible.builtin.set_fact:
+        stack_dir: >-
+          {{ ('/data/ops-center-stacks' if (data_dir.stat.exists and data_dir.stat.isdir)
+          else '/home/' ~ ansible_user ~ '/ops-center-stacks') ~ '/' ~ stack_name }}
+
+    - name: Ensure this stack's directory exists
+      ansible.builtin.file:
+        path: "{{ stack_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Write compose.yml
+      ansible.builtin.copy:
+        content: "{{ compose_yaml }}"
+        dest: "{{ stack_dir }}/compose.yml"
+        mode: "0600"
+
+    - name: Docker compose up -d
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - "-p"
+          - "{{ stack_name }}"
+          - "-f"
+          - "{{ stack_dir }}/compose.yml"
+          - up
+          - "-d"
+          - --remove-orphans
+      register: result
+      changed_when: true
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'ok': (result.rc == 0),
+          'stdout': (result.stdout | default(''))[-8000:],
+          'stderr': (result.stderr | default(''))[-8000:]} | to_json }}

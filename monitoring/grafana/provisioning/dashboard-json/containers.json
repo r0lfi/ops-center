@@ -1,0 +1,51 @@
+{
+  "title": "Containers",
+  "uid": "ops-containers",
+  "tags": ["ops-center"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Container CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [{ "expr": "sum by (name) (irate(container_cpu_usage_seconds_total{name!=\"\"}[5m])) * 100", "legendFormat": "{{name}}", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Container Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [{ "expr": "container_memory_usage_bytes{name!=\"\"}", "legendFormat": "{{name}}", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "Network I/O",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "expr": "sum by (name) (irate(container_network_receive_bytes_total{name!=\"\"}[5m]))", "legendFormat": "{{name}} rx", "refId": "A" },
+        { "expr": "sum by (name) (irate(container_network_transmit_bytes_total{name!=\"\"}[5m]))", "legendFormat": "{{name}} tx", "refId": "B" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Filesystem Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [{ "expr": "container_fs_usage_bytes{name!=\"\"}", "legendFormat": "{{name}}", "refId": "A" }]
+    }
+  ]
+}

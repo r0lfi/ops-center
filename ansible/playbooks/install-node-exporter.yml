@@ -1,0 +1,156 @@
+---
+# Installs node_exporter as a static binary + systemd unit. Works the same
+# across AlmaLinux/RHEL/Ubuntu since it doesn't depend on distro packages.
+- name: Install and start node_exporter
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    node_exporter_version: "1.9.1"
+    node_exporter_arch_map:
+      x86_64: amd64
+      aarch64: arm64
+    node_exporter_arch: "{{ node_exporter_arch_map[ansible_architecture] | default('amd64') }}"
+    node_exporter_tarball: "node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
+    node_exporter_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/{{ node_exporter_tarball }}"
+    node_exporter_port: 9100
+
+  tasks:
+    - name: Ensure tar is present (required by the unarchive module below)
+      ansible.builtin.package:
+        name: tar
+        state: present
+
+    - name: Check installed node_exporter version
+      ansible.builtin.command: /usr/local/bin/node_exporter --version
+      register: installed_version
+      changed_when: false
+      failed_when: false
+
+    # ansible-lint's static jinja check can't see the `register` above and
+    # flags installed_version as undefined - a false positive, not a real
+    # bug: node_exporter_version is a real play var (see vars: above), and
+    # --syntax-check (the actual parser) passes.
+    - name: Determine whether install is needed  # noqa: jinja[invalid]
+      ansible.builtin.set_fact:
+        node_exporter_needs_install: "{{ node_exporter_version not in (installed_version.stderr | default('')) }}"
+
+    - name: Download and install node_exporter
+      when: node_exporter_needs_install
+      block:
+        - name: Download node_exporter release
+          ansible.builtin.get_url:
+            url: "{{ node_exporter_url }}"
+            dest: "/tmp/{{ node_exporter_tarball }}"
+            mode: "0644"
+
+        - name: Extract node_exporter
+          ansible.builtin.unarchive:
+            src: "/tmp/{{ node_exporter_tarball }}"
+            dest: /tmp
+            remote_src: true
+
+        - name: Install node_exporter binary
+          ansible.builtin.copy:
+            src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+            dest: /usr/local/bin/node_exporter
+            owner: root
+            group: root
+            mode: "0755"
+            remote_src: true
+          notify: Restart node_exporter
+
+        - name: Clean up download artifacts
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "/tmp/{{ node_exporter_tarball }}"
+            - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
+
+    - name: Create node_exporter system user
+      ansible.builtin.user:
+        name: node_exporter
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+
+    - name: Create textfile collector directory
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile_collector
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install node_exporter systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/node_exporter.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          User=node_exporter
+          Group=node_exporter
+          Type=simple
+          ExecStart=/usr/local/bin/node_exporter \
+            --web.listen-address=:{{ node_exporter_port }} \
+            --collector.systemd \
+            --collector.processes \
+            --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+          Restart=on-failure
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          ProtectHome=true
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart node_exporter
+
+    - name: Enable and start node_exporter
+      ansible.builtin.systemd:
+        name: node_exporter
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Open firewalld port for node_exporter (RHEL family, if firewalld is active)
+      when: ansible_os_family == "RedHat"
+      block:
+        - name: Check firewalld status
+          ansible.builtin.command: firewall-cmd --state
+          register: firewalld_state
+          changed_when: false
+          failed_when: false
+
+        - name: Check whether the port is already open
+          ansible.builtin.command: "firewall-cmd --query-port={{ node_exporter_port }}/tcp"
+          register: firewalld_port_check
+          changed_when: false
+          failed_when: false
+          when: firewalld_state.rc == 0
+
+        - name: Allow node_exporter port permanently
+          ansible.builtin.command: "firewall-cmd --permanent --add-port={{ node_exporter_port }}/tcp"
+          when:
+            - firewalld_state.rc == 0
+            - firewalld_port_check.rc != 0
+          changed_when: true
+          notify: Reload firewalld
+
+  handlers:
+    - name: Restart node_exporter
+      ansible.builtin.systemd:
+        name: node_exporter
+        state: restarted
+        daemon_reload: true
+
+    - name: Reload firewalld
+      ansible.builtin.command: firewall-cmd --reload
+      changed_when: true

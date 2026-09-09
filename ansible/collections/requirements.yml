@@ -1,0 +1,5 @@
+---
+# No external collections required yet - every playbook currently uses only
+# ansible.builtin modules. Add pinned entries here (with a version) before
+# any playbook starts depending on a community collection.
+collections: []

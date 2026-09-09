@@ -1,0 +1,47 @@
+global:
+  scrape_interval: 20s
+  evaluation_interval: 20s
+  external_labels:
+    environment: ops-center
+rule_files:
+- /etc/prometheus/rules/*.yml
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      - alertmanager:9093
+scrape_configs:
+- job_name: prometheus
+  static_configs:
+  - targets:
+    - localhost:9090
+- job_name: node_exporter
+  file_sd_configs:
+  - files:
+    - /etc/prometheus/file_sd/node_exporters.json
+    refresh_interval: 30s
+  relabel_configs:
+  - source_labels:
+    - hostname
+    target_label: instance
+- job_name: cadvisor
+  static_configs:
+  - targets:
+    - cadvisor:8080
+- job_name: blackbox_http
+  metrics_path: /probe
+  params:
+    module:
+    - http_2xx
+  static_configs:
+  - targets:
+    - http://proxy:8080/healthz
+  relabel_configs:
+  - source_labels:
+    - __address__
+    target_label: __param_target
+  - source_labels:
+    - __param_target
+    target_label: instance
+  - target_label: __address__
+    replacement: blackbox-exporter:9115

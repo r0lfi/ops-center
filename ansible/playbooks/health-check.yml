@@ -1,0 +1,62 @@
+---
+# Read-only quick health summary: uptime, load, memory, disk. Used by the
+# "Check health" action on the server detail page.
+- name: Quick health check
+  hosts: all
+  gather_facts: true
+
+  tasks:
+    - name: Report health summary
+      ansible.builtin.debug:
+        msg:
+          uptime_seconds: "{{ ansible_uptime_seconds | default('unknown') }}"
+          load: "{{ ansible_loadavg | default('unknown') }}"
+          memory_total_mb: "{{ ansible_memtotal_mb }}"
+          memory_free_mb: "{{ ansible_memfree_mb }}"
+          swap_total_mb: "{{ ansible_swaptotal_mb }}"
+          swap_free_mb: "{{ ansible_swapfree_mb }}"
+          filesystems: >-
+            {{
+              ansible_mounts
+              | selectattr('mount', 'in', ['/', '/var', '/home', '/data'])
+              | map(attribute='mount')
+              | list
+            }}
+
+    - name: Report filesystem usage
+      ansible.builtin.debug:
+        msg: "{{ item.mount }}: {{ ((item.size_total - item.size_available) / item.size_total * 100) | round(1) }}% used"
+      loop: "{{ ansible_mounts }}"
+      loop_control:
+        label: "{{ item.mount }}"
+      when: item.size_total > 0
+
+    # Structured passthrough for the AI Linux Agent's get_disk_usage tool
+    # (worker_ai/ai/tools/linux_tools.py) - see worker/tasks.py's
+    # QUERY_MARKER. Additive: the human-readable debug tasks above are
+    # unchanged, this just also emits the same numbers as JSON.
+    - name: Compute filesystem usage percentages
+      ansible.builtin.set_fact:
+        fs_usage: >-
+          {{
+            (fs_usage | default([])) +
+            [{'mount': item.mount,
+              'used_percent': ((item.size_total - item.size_available) / item.size_total * 100) | round(1)}]
+          }}
+      loop: "{{ ansible_mounts }}"
+      loop_control:
+        label: "{{ item.mount }}"
+      when: item.size_total > 0
+
+    - name: Emit structured query result
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {
+            'uptime_seconds': ansible_uptime_seconds | default(0),
+            'load': ansible_loadavg | default({}),
+            'memory_total_mb': ansible_memtotal_mb,
+            'memory_free_mb': ansible_memfree_mb,
+            'swap_total_mb': ansible_swaptotal_mb,
+            'swap_free_mb': ansible_swapfree_mb,
+            'filesystems': fs_usage | default([])
+          } | to_json }}

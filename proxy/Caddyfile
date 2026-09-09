@@ -1,0 +1,26 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	log {
+		output stdout
+		format console
+	}
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle /api/* {
+		reverse_proxy ops-api:8000
+	}
+	handle /grafana/* {
+		reverse_proxy grafana:3000
+	}
+
+	handle {
+		reverse_proxy ops-frontend:8080
+	}
+}

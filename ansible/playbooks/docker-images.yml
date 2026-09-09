@@ -1,0 +1,38 @@
+---
+# Read-only image listing for the Docker Hosts UI's Images tab - remote-host
+# equivalent of security-worker's direct docker.sock image listing (which
+# shells out to the same `docker image ls -q | xargs docker inspect` shape
+# via subprocess - see security/docker_control.py's list_images - so both
+# paths return identical JSON). Follows container-inventory.yml's "no
+# Docker = empty list, not a failure" convention. See containers.py's
+# _run_remote_query for how the result gets back to the API request that
+# triggered this (via the generic OPS_CENTER_QUERY_RESULT marker, not a
+# dedicated marker/table like container-inventory.yml's containers sync).
+- name: List Docker images
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether docker is available
+      ansible.builtin.command: which docker
+      register: docker_present
+      changed_when: false
+      failed_when: false
+
+    - name: List and inspect all images
+      when: docker_present.rc == 0
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          docker image ls -q | xargs -r docker inspect
+        executable: /bin/bash
+      register: image_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'images':
+          ((image_inspect.stdout | from_json) if (docker_present.rc == 0 and image_inspect.stdout) else [])}
+          | to_json }}

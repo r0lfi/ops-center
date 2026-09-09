@@ -1,0 +1,4 @@
+/** Small locally authored Linux penguin, shared with the workstation screen. */
+export const TUX_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 90"><ellipse cx="40" cy="44" rx="26" ry="36" fill="#020409" stroke="#627485" stroke-width="2"/><ellipse cx="40" cy="53" rx="19" ry="25" fill="#F3F7FB"/><ellipse cx="32" cy="25" rx="7" ry="10" fill="#F3F7FB"/><ellipse cx="48" cy="25" rx="7" ry="10" fill="#F3F7FB"/><ellipse cx="34" cy="27" rx="2.5" ry="4" fill="#020409"/><ellipse cx="46" cy="27" rx="2.5" ry="4" fill="#020409"/><path d="M29 38 Q40 29 51 38L40 45Z" fill="#FFC247"/><path d="M18 73 5 81Q16 90 34 83L32 72M62 73 75 81Q64 90 46 83L48 72" fill="#FFC247" stroke="#D99A12" stroke-width="2"/><path d="M17 40 7 66Q17 72 23 58M63 40 73 66Q63 72 57 58" fill="#020409"/></svg>`;
+export const TUX_URL = `data:image/svg+xml,${encodeURIComponent(TUX_SVG)}`;
+export function Tux() { return <img src={TUX_URL} alt="Linux" width={46} height={52} />; }

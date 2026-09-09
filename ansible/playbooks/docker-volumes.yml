@@ -1,0 +1,31 @@
+---
+# Read-only volume listing for the Docker Hosts UI's Volumes tab. Same
+# isolation/tolerance conventions as docker-images.yml.
+- name: List Docker volumes
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether docker is available
+      ansible.builtin.command: which docker
+      register: docker_present
+      changed_when: false
+      failed_when: false
+
+    - name: List and inspect all volumes
+      when: docker_present.rc == 0
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          docker volume ls -q | xargs -r docker volume inspect
+        executable: /bin/bash
+      register: volume_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'volumes':
+          ((volume_inspect.stdout | from_json) if (docker_present.rc == 0 and volume_inspect.stdout) else [])}
+          | to_json }}

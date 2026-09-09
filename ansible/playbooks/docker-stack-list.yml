@@ -1,0 +1,41 @@
+---
+# Lists stack names on a remote managed host - remote equivalent of
+# security-worker's list_stacks() (a directory listing under the stacks
+# root, same "a compose.yml present = a stack" rule).
+- name: List docker-compose stacks
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether this host has a dedicated /data volume
+      ansible.builtin.stat:
+        path: /data
+      register: data_dir
+
+    - name: Resolve the stacks root
+      ansible.builtin.set_fact:
+        stack_root: >-
+          {{ '/data/ops-center-stacks' if (data_dir.stat.exists and data_dir.stat.isdir)
+          else '/home/' ~ ansible_user ~ '/ops-center-stacks' }}
+
+    - name: Find compose.yml files one level under the stacks root
+      # Matches list_stacks()'s own rule exactly: a directory counts as a
+      # stack only if it has a compose.yml in it, not just any subdirectory.
+      ansible.builtin.find:
+        paths: "{{ stack_root }}"
+        patterns: "compose.yml"
+        recurse: true
+        depth: 2
+      register: found_files
+      failed_when: false
+
+    - name: Emit structured results
+      vars:
+        stack_names: >-
+          {{ (found_files.files | default([]))
+          | map(attribute='path')
+          | map('dirname')
+          | map('basename')
+          | list }}
+      ansible.builtin.debug:
+        msg: "OPS_CENTER_QUERY_RESULT:{{ {'stacks': stack_names} | to_json }}"

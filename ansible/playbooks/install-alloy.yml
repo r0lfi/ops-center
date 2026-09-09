@@ -1,0 +1,123 @@
+---
+# Installs Grafana Alloy for log shipping (journald/syslog/secure -> Loki).
+# Loki is published directly on the docker host (not through the
+# authenticated web proxy - see docs/security.md) so managed hosts can
+# push to it; worker/tasks.py passes LOKI_EXTERNAL_URL through as an
+# ansible-runner envvar from the ops-worker container's own environment
+# (compose.yml sets it from HOST_IP/LOKI_PORT).
+- name: Install and configure Grafana Alloy
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    # `loki_url` itself is intentionally NOT declared here: a self-
+    # referencing `loki_url: "{{ loki_url | default(...) }}"` in a vars:
+    # block is correctly rejected by ansible-core as a recursive template.
+    # It's used with `| default(loki_push_url)` directly at the point of
+    # use below instead, so it still stays overridable via extra_vars (e.g.
+    # from the Automation page) without redeclaring itself.
+    loki_push_url: "{{ lookup('env', 'LOKI_EXTERNAL_URL') }}/loki/api/v1/push"
+
+  tasks:
+    - name: RHEL family - add Grafana repo
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.yum_repository:
+        name: grafana
+        description: Grafana
+        baseurl: https://rpm.grafana.com
+        gpgcheck: true
+        gpgkey: https://rpm.grafana.com/gpg.key
+
+    - name: Debian family - ensure /etc/apt/keyrings exists
+      when: ansible_os_family == "Debian"
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Debian family - add Grafana apt key
+      when: ansible_os_family == "Debian"
+      ansible.builtin.get_url:
+        url: https://apt.grafana.com/gpg.key
+        dest: /etc/apt/keyrings/grafana.asc
+        mode: "0644"
+
+    - name: Debian family - add Grafana apt repo
+      when: ansible_os_family == "Debian"
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
+        filename: grafana
+        state: present
+
+    - name: RHEL family - install alloy
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.dnf:
+        name: alloy
+        state: present
+
+    - name: Debian family - install alloy
+      when: ansible_os_family == "Debian"
+      ansible.builtin.apt:
+        name: alloy
+        state: present
+        update_cache: true
+
+    - name: Write Alloy configuration
+      ansible.builtin.copy:
+        dest: /etc/alloy/config.alloy
+        owner: root
+        group: alloy  # the alloy.service unit runs as user alloy, group-read is required
+        mode: "0640"
+        content: |
+          logging {
+            level  = "info"
+            format = "logfmt"
+          }
+
+          loki.write "ops_center" {
+            endpoint {
+              url = "{{ loki_url | default(loki_push_url) }}"
+            }
+          }
+
+          loki.source.journal "systemd" {
+            forward_to    = [loki.write.ops_center.receiver]
+            relabel_rules = loki.relabel.journal.rules
+            labels        = {host = "{{ inventory_hostname }}"}
+          }
+
+          loki.relabel "journal" {
+            forward_to = []
+
+            rule {
+              source_labels = ["__journal__systemd_unit"]
+              target_label  = "unit"
+            }
+          }
+
+          local.file_match "syslog" {
+            path_targets = [
+              {"__path__" = "/var/log/messages", "job" = "syslog", "host" = "{{ inventory_hostname }}"},
+              {"__path__" = "/var/log/secure",   "job" = "auth",   "host" = "{{ inventory_hostname }}"},
+            ]
+          }
+
+          loki.source.file "syslog_files" {
+            targets    = local.file_match.syslog.targets
+            forward_to = [loki.write.ops_center.receiver]
+          }
+      notify: Restart alloy
+
+    - name: Enable and start alloy
+      ansible.builtin.systemd:
+        name: alloy
+        enabled: true
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: Restart alloy
+      ansible.builtin.systemd:
+        name: alloy
+        state: restarted
+        daemon_reload: true

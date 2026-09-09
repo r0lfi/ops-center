@@ -1,0 +1,10 @@
+celery==5.4.0
+redis==5.2.1
+sqlalchemy==2.0.52
+psycopg[binary]==3.3.4
+pydantic-settings==2.15.0
+
+# Plain httpx calls to Anthropic/OpenAI/Ollama's REST APIs - no provider
+# SDKs, matching the rest of the app's "raw httpx proxy" convention
+# (app/api/routes/metrics.py, logs.py, alerts.py all do the same).
+httpx==0.28.1

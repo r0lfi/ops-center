@@ -1,0 +1,128 @@
+groups:
+  - name: ops-center-default
+    rules:
+      - alert: ServerDown
+        expr: up{job="node_exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.hostname }} is unreachable"
+          description: "Prometheus has not been able to scrape {{ $labels.hostname }} for 2 minutes."
+
+      - alert: HighCPU
+        expr: (100 - (avg by (instance, hostname) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.hostname }}"
+          description: "CPU usage has been above 90% for 10 minutes."
+
+      - alert: CriticalCPU
+        expr: (100 - (avg by (instance, hostname) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 95
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU on {{ $labels.hostname }}"
+          description: "CPU usage has been above 95% for 5 minutes."
+
+      - alert: HighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.hostname }}"
+          description: "Memory usage has been above 90% for 10 minutes."
+
+      - alert: DiskWarning
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.hostname }} is above 85%"
+          description: "Filesystem usage has been above 85% for 10 minutes."
+
+      - alert: DiskCritical
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 92
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.hostname }} is above 92%"
+          description: "Filesystem usage has been above 92% for 5 minutes."
+
+      - alert: InodeWarning
+        expr: (1 - (node_filesystem_files_free{fstype!~"tmpfs|overlay"} / node_filesystem_files{fstype!~"tmpfs|overlay"})) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inode usage on {{ $labels.mountpoint }} ({{ $labels.hostname }}) is above 85%"
+          description: "Inode usage has been above 85% for 10 minutes."
+
+      - alert: MonitoredServiceDown
+        expr: ops_center_monitored_unit_active == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.unit }} is not active on {{ $labels.hostname }}"
+          description: "An explicitly monitored systemd unit is not in the running state."
+
+      - alert: RebootRequired
+        expr: ops_center_reboot_required == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.hostname }} requires a reboot"
+          description: "Pending updates on this host require a reboot to take effect."
+
+      - alert: EndpointDown
+        expr: probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Blackbox probe failing for {{ $labels.instance }}"
+          description: "The blackbox probe for this target has been failing for 2 minutes."
+
+      - alert: CertificateExpiring
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires soon"
+          description: "Fewer than 14 days remain before this certificate expires."
+
+      - alert: ProcessTableHigh
+        expr: (node_processes_pids / node_processes_max_processes) * 100 > 60
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Process table filling up on {{ $labels.hostname }}"
+          description: "PID usage has been above 60% of the max for 15 minutes. A slow leak (e.g. a subprocess-spawning job not reaping children) can eventually exhaust fork() and lock out even SSH shells."
+
+      - alert: ProcessTableCritical
+        expr: (node_processes_pids / node_processes_max_processes) * 100 > 80
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Process table nearly full on {{ $labels.hostname }}"
+          description: "PID usage above 80% of the max for 5 minutes. fork() failures are imminent, including for new SSH sessions."
+
+      - alert: ZombieProcessesHigh
+        expr: node_processes_state{state="Z"} > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Zombie processes accumulating on {{ $labels.hostname }}"
+          description: "More than 50 zombie processes for 15 minutes. Usually means something is forking children without reaping them (ansible_runner/subprocess calls are a common cause)."

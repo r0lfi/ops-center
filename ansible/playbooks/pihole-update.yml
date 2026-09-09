@@ -1,0 +1,26 @@
+---
+# Runs Pi-hole's own updater (`pihole -up`) - this patches the Pi-hole
+# application (core/web/FTL), not the underlying OS, which the regular
+# patch-security.yml/patch-all.yml already cover for these hosts. Absolute
+# path is required: sudo's secure_path on example-dns-01/example-dns-02 doesn't
+# include /usr/local/bin where the `pihole` binary lives, so a bare
+# `pihole` command fails under sudo even though it resolves fine in an
+# interactive shell. Idempotent - reports "Everything is up to date" and
+# exits cleanly when there's nothing to update.
+- name: Update Pi-hole (core, web interface, FTL)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Run pihole -up
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/pihole
+          - -up
+      register: result
+      changed_when: "'Everything is up to date' not in result.stdout"
+
+    - name: Report outcome
+      ansible.builtin.debug:
+        msg: "{{ result.stdout_lines }}"

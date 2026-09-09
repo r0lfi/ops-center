@@ -1,0 +1,46 @@
+---
+# start/stop/restart/pull for every service in one stack on a remote
+# managed host - remote equivalent of security-worker's stack_action().
+# stack_name/stack_action are validated server-side before this ever runs.
+- name: Run a docker compose action against a stack
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether this host has a dedicated /data volume
+      ansible.builtin.stat:
+        path: /data
+      register: data_dir
+
+    - name: Resolve the stacks root
+      ansible.builtin.set_fact:
+        stack_dir: >-
+          {{ ('/data/ops-center-stacks' if (data_dir.stat.exists and data_dir.stat.isdir)
+          else '/home/' ~ ansible_user ~ '/ops-center-stacks') ~ '/' ~ stack_name }}
+
+    - name: Check the stack directory exists
+      ansible.builtin.stat:
+        path: "{{ stack_dir }}/compose.yml"
+      register: compose_file
+
+    - name: "Docker compose action: {{ stack_action }}"
+      when: compose_file.stat.exists
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - "-p"
+          - "{{ stack_name }}"
+          - "-f"
+          - "{{ stack_dir }}/compose.yml"
+          - "{{ stack_action }}"
+      register: result
+      changed_when: true
+
+    - name: Emit structured results
+      vars:
+        stderr_text: "{{ (result.stderr | default(''))[-8000:] if compose_file.stat.exists else 'stack not found' }}"
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'ok': (compose_file.stat.exists and (result.rc | default(1)) == 0),
+          'stdout': (result.stdout | default(''))[-8000:], 'stderr': stderr_text} | to_json }}

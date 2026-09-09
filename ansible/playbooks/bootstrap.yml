@@ -1,0 +1,34 @@
+---
+# First-contact playbook: confirms the host is reachable under automation,
+# gathers baseline facts, and leaves a marker so future runs can detect a
+# previously-bootstrapped host. Safe to re-run.
+- name: Bootstrap host for Ops Center management
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Ensure Python is usable (fact gathering already proves this, this is belt-and-suspenders)
+      ansible.builtin.command: /usr/bin/python3 --version
+      register: python_version
+      changed_when: false
+
+    - name: Ensure the ops-center marker directory exists
+      ansible.builtin.file:
+        path: /etc/ops-center
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      become: true
+
+    - name: Record bootstrap timestamp
+      ansible.builtin.copy:
+        dest: /etc/ops-center/bootstrapped_at
+        content: "{{ ansible_date_time.iso8601 }}\n"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+
+    - name: Report distribution
+      ansible.builtin.debug:
+        msg: "{{ ansible_distribution }} {{ ansible_distribution_version }} ({{ ansible_os_family }})"

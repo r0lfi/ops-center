@@ -1,0 +1,25 @@
+---
+# Raw `docker inspect` for a single container - remote equivalent of
+# security-worker's docker.sock inspect access, backing the Container
+# Detail page's Inspect tab. container_name is validated server-side (same
+# _DOCKER_NAME_RE as container-control.yml) before this ever runs.
+- name: Inspect a single container
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: "Docker inspect: {{ container_name }}"
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - "{{ container_name }}"
+      register: result
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'inspect':
+          ((result.stdout | from_json)[0] if (result.rc == 0 and result.stdout) else none)} | to_json }}

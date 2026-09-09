@@ -1,0 +1,55 @@
+{
+  "title": "Filesystem",
+  "uid": "ops-filesystem",
+  "tags": ["ops-center"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": { "query": "label_values(up{job=\"node_exporter\"}, instance)", "refId": "instance" },
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Filesystem Usage %",
+      "type": "bargauge",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 85 }, { "color": "red", "value": 92 }] } }, "overrides": [] },
+      "targets": [{ "expr": "(1 - (node_filesystem_avail_bytes{instance=~\"$instance\", fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{instance=~\"$instance\", fstype!~\"tmpfs|overlay\"})) * 100", "legendFormat": "{{mountpoint}}", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "title": "Inode Usage %",
+      "type": "bargauge",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "min": 0, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 85 }, { "color": "red", "value": 92 }] } }, "overrides": [] },
+      "targets": [{ "expr": "(1 - (node_filesystem_files_free{instance=~\"$instance\", fstype!~\"tmpfs|overlay\"} / node_filesystem_files{instance=~\"$instance\", fstype!~\"tmpfs|overlay\"})) * 100", "legendFormat": "{{mountpoint}}", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "Disk I/O (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] },
+      "targets": [
+        { "expr": "irate(node_disk_read_bytes_total{instance=~\"$instance\"}[5m])", "legendFormat": "{{device}} read", "refId": "A" },
+        { "expr": "irate(node_disk_written_bytes_total{instance=~\"$instance\"}[5m])", "legendFormat": "{{device}} write", "refId": "B" }
+      ]
+    }
+  ]
+}

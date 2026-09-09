@@ -1,0 +1,47 @@
+---
+# Read-only. Lists containers on managed hosts other than ops-host
+# itself - that one is already synced directly by security-worker over
+# docker.sock (see security/tasks.py sync_container_status). Docker socket
+# access stays isolated to that one component (docs/security.md); every
+# other host is inspected over the same SSH connection already used for
+# patching/monitoring, never a second docker.sock exposure. Hosts without
+# Docker at all just report an empty container list, not a failure.
+- name: Collect container inventory
+  hosts: all
+  gather_facts: false
+  vars:
+    # `docker inspect --format` uses Go template syntax, which also uses
+    # {{ }} - Ansible would otherwise try to Jinja-template it itself.
+    # {% raw %} keeps it literal; the variable is then substituted as
+    # plain text into the shell command below (not re-templated).
+    docker_inspect_format: "{% raw %}{{json .}}{% endraw %}"
+
+  tasks:
+    - name: Check whether docker is available
+      # `command -v` only works via a shell (it's a builtin, not a real
+      # binary) - the command module execs directly with no shell, so it
+      # would fail with ENOENT trying to exec a literal "command" binary.
+      # AlmaLinux happens to also ship /usr/bin/command as a real wrapper
+      # (masking this on RHEL-family hosts during testing); Ubuntu doesn't,
+      # which is how this got caught. `which` is a real binary everywhere.
+      ansible.builtin.command: which docker
+      register: docker_present
+      changed_when: false
+      failed_when: false
+
+    - name: List containers (docker inspect, one JSON object per line)
+      when: docker_present.rc == 0
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          docker ps -aq | xargs -r docker inspect --format '{{ docker_inspect_format }}'
+        executable: /bin/bash
+      register: container_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_CONTAINERS:{{ {'containers':
+          (container_inspect.stdout_lines | default([]) if docker_present.rc == 0 else [])} | to_json }}

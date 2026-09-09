@@ -1,0 +1,22 @@
+---
+# Start/stop/restart a single container on a managed host over SSH - the
+# remote-host equivalent of security-worker's direct docker.sock access
+# for ops-host (see docs/security.md). This never touches a socket -
+# it's a single scoped `docker <action> <name>` invocation over the same
+# SSH connection already used for patching/monitoring/container-inventory.
+# container_name/container_action are validated server-side (a real Docker
+# container name, one of start/stop/restart) before this ever runs - see
+# backend/app/api/routes/containers.py.
+- name: Control a single container
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: "Run docker action: {{ container_action ~ ' ' ~ container_name }}"
+      ansible.builtin.command:
+        argv:
+          - docker
+          - "{{ container_action }}"
+          - "{{ container_name }}"
+      register: result
+      changed_when: true

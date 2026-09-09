@@ -1,0 +1,48 @@
+---
+# Explicit, user-initiated image pull on a remote managed host - remote
+# equivalent of security-worker's pull_image(). Never called
+# automatically (see backend/app/api/routes/containers.py). If registry
+# credentials are supplied, logs in first via --password-stdin so the
+# password never lands in argv/process listings; no-op login step when
+# registry_username is empty (public image).
+- name: Pull a Docker image
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: "Log in to {{ registry_url }}"
+      when: registry_username | default('') | length > 0
+      ansible.builtin.command:
+        argv:
+          - docker
+          - login
+          - "{{ registry_url }}"
+          - -u
+          - "{{ registry_username }}"
+          - --password-stdin
+        stdin: "{{ registry_password }}"
+      register: login_result
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: "Docker pull: {{ image }}"
+      when: (registry_username | default('') | length == 0) or (login_result.rc | default(1)) == 0
+      ansible.builtin.command:
+        argv:
+          - docker
+          - pull
+          - "{{ image }}"
+      register: result
+      changed_when: true
+      failed_when: false
+
+    - name: Emit structured results
+      vars:
+        login_failed: "{{ (registry_username | default('') | length > 0) and (login_result.rc | default(1)) != 0 }}"
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'ok': (not login_failed) and (result.rc | default(1)) == 0,
+          'stdout': (result.stdout | default(''))[-8000:],
+          'stderr': ((login_result.stderr | default('registry login failed'))[-4000:] if login_failed
+          else (result.stderr | default(''))[-8000:])} | to_json }}

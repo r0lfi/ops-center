@@ -1,0 +1,37 @@
+---
+# Reads one stack's compose.yml content on a remote managed host - remote
+# equivalent of security-worker's get_stack(). Uses slurp (base64) rather
+# than `cat`/shell, so arbitrary compose file content can never be
+# misinterpreted as a shell command or corrupt the debug/JSON encoding.
+- name: Read a stack's compose.yml
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether this host has a dedicated /data volume
+      ansible.builtin.stat:
+        path: /data
+      register: data_dir
+
+    - name: Resolve the stacks root
+      ansible.builtin.set_fact:
+        compose_path: >-
+          {{ ('/data/ops-center-stacks' if (data_dir.stat.exists and data_dir.stat.isdir)
+          else '/home/' ~ ansible_user ~ '/ops-center-stacks') ~ '/' ~ stack_name ~ '/compose.yml' }}
+
+    - name: Check the compose file exists
+      ansible.builtin.stat:
+        path: "{{ compose_path }}"
+      register: compose_file
+
+    - name: Read it
+      when: compose_file.stat.exists
+      ansible.builtin.slurp:
+        src: "{{ compose_path }}"
+      register: slurped
+
+    - name: Emit structured results
+      vars:
+        compose_yaml: "{{ (slurped.content | b64decode) if compose_file.stat.exists else none }}"
+      ansible.builtin.debug:
+        msg: "OPS_CENTER_QUERY_RESULT:{{ {'compose_yaml': compose_yaml, 'path': compose_path} | to_json }}"

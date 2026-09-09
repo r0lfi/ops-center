@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root,
+  .dark {
+    --background: 222 30% 6%;
+    --foreground: 210 20% 92%;
+
+    --card: 222 26% 9%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 222 26% 9%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 199 89% 48%;
+    --primary-foreground: 210 20% 98%;
+
+    --secondary: 222 20% 16%;
+    --secondary-foreground: 210 20% 92%;
+
+    --muted: 222 20% 14%;
+    --muted-foreground: 215 16% 60%;
+
+    --accent: 222 20% 18%;
+    --accent-foreground: 210 20% 92%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 222 20% 18%;
+    --input: 222 20% 18%;
+    --ring: 199 89% 48%;
+
+    --status-ok: 142 71% 45%;
+    --status-warning: 38 92% 50%;
+    --status-critical: 0 72% 51%;
+    --status-unknown: 215 16% 47%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+/* Idle-state subtle bob for Ops Floor robot characters (RobotGlyph.tsx). */
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* Ops Floor is a dedicated full-viewport room. Other routes retain their shell. */
+.ops-floor-page { background:#070B12; color:#F3F7FB; font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; height:100dvh; display:grid; grid-template-rows:76px minmax(0,1fr) 30px; padding:0 12px; overflow:hidden; }
+.ops-floor-header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 6px; }
+.ops-floor-counters { display:flex; align-items:center; justify-content:center; gap:14px; width:560px; }
+.ops-floor-main { display:grid; grid-template-columns:minmax(0,1fr) 360px; min-height:0; gap:10px; padding-bottom:2px; }
+.ops-floor-sidebar { display:grid; grid-template-rows:minmax(360px,1.05fr) minmax(180px,1fr); min-height:0; gap:10px; background:#080D15; }
+.ops-floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 8px; }
+.ops-floor-footer > div { white-space:nowrap; }
+.ops-floor-motto { padding-left:28px; }
+.ops-nameplate { width:150px; height:45px; padding:6px 10px; border-radius:7px; background:rgba(6,14,22,.88); border:1px solid #29455F; backdrop-filter:blur(8px); box-shadow:0 4px 16px #02040980; pointer-events:auto; text-align:left; }
+.ops-nameplate:focus-visible { outline:2px solid #00D9FF; }
+.ops-nameplate-name { line-height:17px; display:flex; align-items:center; gap:7px; font-size:14px; font-weight:700; color:#F3F7FB; white-space:nowrap; }
+.ops-nameplate-status { display:block; line-height:14px; padding-left:15px; font-size:11px; }
+.ops-agent-identity { width:72px; height:58px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; border:1px solid; border-radius:8px; font-size:9px; font-weight:700; letter-spacing:.08em; }
+.ops-agent-identity-linux { border-color:#29455F; background:#111B29; color:#00D9FF; }
+.ops-agent-identity-linux img { width:32px; height:36px; object-fit:contain; }
+.ops-service-badges { display:flex; flex-wrap:wrap; gap:5px; }
+.ops-service-badges span { padding:3px 7px; border:1px solid; border-radius:5px; background:#111B29; font-size:10px; line-height:1.1; }
+.ops-inline-chat { padding:10px; border:1px solid #1C2D40; border-radius:7px; background:#090E17; }
+.ops-inline-chat label { display:block; margin-bottom:6px; color:#8799AD; font-size:11px; }
+.ops-inline-chat textarea { width:100%; resize:vertical; min-height:42px; border:1px solid #29455F; border-radius:5px; background:#111B29; color:#F3F7FB; padding:7px 8px; font-size:12px; outline:none; }
+.ops-inline-chat textarea:focus { border-color:#00B8E6; box-shadow:0 0 0 2px #00D9FF22; }
+.ops-inline-chat textarea::placeholder { color:#586A7D; }
+.ops-inline-chat button { display:inline-flex; align-items:center; gap:5px; border:1px solid #00AEE8; border-radius:5px; background:#10273A; color:#74DCFF; padding:5px 9px; font-size:11px; font-weight:600; }
+.ops-inline-chat button:disabled { opacity:.45; cursor:not-allowed; }
+.ops-inline-hint { color:#586A7D; font-size:10px; }
+.ops-inline-reply { max-width:190px; overflow:hidden; color:#9BAFC1; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+@media(max-width:1500px) { .ops-floor-main { grid-template-columns:minmax(0,1fr) 320px; } .ops-floor-counters { width:auto; padding:0 14px; gap:10px; } }
+@media(max-width:1100px) { .ops-floor-header { flex-wrap:wrap; gap:6px; } .ops-floor-page { grid-template-rows:110px minmax(0,1fr) 30px; } .ops-floor-counters { order:3; width:100%; height:32px!important; } .ops-floor-motto { display:none; } .ops-floor-main { grid-template-columns:minmax(0,1fr) 280px; } }
+@media(max-width:760px) { .ops-floor-page { height:auto; min-height:100dvh; overflow:visible; grid-template-rows:110px auto 50px; padding:0 8px; } .ops-floor-main { display:flex; flex-direction:column; } .ops-floor-main > div:first-child { height:65dvh; min-height:440px; } .ops-floor-sidebar { grid-template-rows:auto 320px; } .ops-floor-counters { gap:6px; padding:0 4px; } .ops-floor-counters span { font-size:10px!important; } .ops-floor-footer { flex-wrap:wrap; } }
+
+.ops-task-progress { height:5px; overflow:hidden; background:#192A3C; border-radius:4px; margin-top:10px; }
+.ops-task-progress span { display:block; height:100%; width:35%; background:#24B8F2; border-radius:4px; animation:ops-progress 2.4s ease-in-out infinite; }
+@keyframes ops-progress { 0% { transform:translateX(-100%); } 100% { transform:translateX(390%); } }
+@media(prefers-reduced-motion:reduce) { .ops-task-progress span { animation:none; } }

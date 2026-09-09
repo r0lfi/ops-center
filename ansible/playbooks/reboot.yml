@@ -1,0 +1,56 @@
+---
+# Controlled reboot: precheck -> reboot -> wait for SSH -> wait for
+# node_exporter -> validate explicitly monitored services -> only then is
+# the job successful. Ops Center only ever calls this for a host whose
+# reboot_policy is "automatic", or with explicit operator confirmation.
+- name: Controlled reboot
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: "{{ batch_size | default(1) }}"
+
+  tasks:
+    # Not `vars: required_services: "{{ required_services | default([]) }}"` -
+    # ansible-core rejects a vars: entry that references its own name in a
+    # default() as a recursive template. set_fact into a different name.
+    - name: Resolve required services list
+      ansible.builtin.set_fact:
+        required_services_list: "{{ required_services | default([]) }}"
+
+    - name: Precheck - confirm host is actually reachable before rebooting
+      ansible.builtin.ping:
+
+    - name: Reboot the host and wait for it to come back
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+        connect_timeout: 20
+        pre_reboot_delay: 2
+        post_reboot_delay: 10
+        test_command: whoami
+
+    - name: Wait for node_exporter to respond
+      ansible.builtin.wait_for:
+        host: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+        port: 9100
+        timeout: 120
+      delegate_to: "{{ inventory_hostname }}"
+      # node_exporter may not be installed on this host yet, and a wait_for
+      # timeout has no rc to convert into failed_when - don't fail the
+      # reboot job over it.
+      ignore_errors: true  # noqa: ignore-errors
+
+    - name: Gather service facts for post-reboot validation
+      ansible.builtin.service_facts:
+
+    - name: Validate required services came back up
+      ansible.builtin.assert:
+        that:
+          # default('absent') guards a unit that isn't a key in
+          # ansible_facts.services at all (typo'd name, or never
+          # installed on this host) - without it, Jinja raises an
+          # undefined-variable error instead of the clear fail_msg below.
+          - "(ansible_facts.services[item].state | default('absent')) == 'running'"
+        fail_msg: "required service {{ item }} is not running after reboot"
+        success_msg: "{{ item }} is running"
+      loop: "{{ required_services_list }}"
+      when: required_services_list | length > 0

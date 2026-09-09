@@ -1,0 +1,31 @@
+---
+# Read-only log tail for a single container on a managed host - remote
+# equivalent of security-worker's docker.sock log access. Not live (see
+# docs/security.md's TLS/socket-isolation note and the implementation plan
+# this shipped under - live tail is deferred to the same Phase as Console,
+# since both need a persistent channel this app doesn't have to a remote
+# host today). container_name/tail_lines are validated server-side (same
+# _DOCKER_NAME_RE as container-control.yml) before this ever runs.
+- name: Fetch container log tail
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: "Fetch container log tail: {{ container_name }}"
+      ansible.builtin.command:
+        argv:
+          - docker
+          - logs
+          - "--tail"
+          - "{{ tail_lines }}"
+          - "{{ container_name }}"
+      register: result
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'lines':
+          ((result.stdout_lines | default([])) + (result.stderr_lines | default([]))),
+          'ok': (result.rc == 0)} | to_json }}

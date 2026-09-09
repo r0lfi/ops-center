@@ -1,0 +1,36 @@
+---
+# Every container on this host, inspected - remote-host equivalent of
+# security-worker's list_all_containers_raw() (same two-call shape:
+# `docker ps -aq` then `docker inspect`), so both paths return identical
+# JSON for backend/app/services/stack_discovery.py to group by
+# com.docker.compose.project/service labels into discoverable stacks.
+# Same "no docker = empty list, not a failure" convention as
+# docker-images.yml, which this is otherwise a straight copy of.
+- name: List and inspect every container on the host
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether docker is available
+      ansible.builtin.command: which docker
+      register: docker_present
+      changed_when: false
+      failed_when: false
+
+    - name: List and inspect all containers
+      when: docker_present.rc == 0
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          docker ps -aq | xargs -r docker inspect
+        executable: /bin/bash
+      register: container_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'containers':
+          ((container_inspect.stdout | from_json) if (docker_present.rc == 0 and container_inspect.stdout) else [])}
+          | to_json }}

@@ -1,0 +1,20 @@
+---
+# Restarts one systemd unit. A write operation - only ever submitted after
+# explicit human approval (see backend/app/models/ai.py's AIAction and
+# worker_ai/tasks.py's execute_action_task), never directly from an agent
+# tool-call. Uses the systemd module (not a shell command) so the service
+# name is passed as a real module parameter, never shell-interpolated.
+- name: Restart a systemd service
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Restart service
+      ansible.builtin.systemd:
+        name: "{{ service_name }}"
+        state: restarted
+
+    - name: Emit structured query result
+      ansible.builtin.debug:
+        msg: "OPS_CENTER_QUERY_RESULT:{{ {'restarted': service_name} | to_json }}"

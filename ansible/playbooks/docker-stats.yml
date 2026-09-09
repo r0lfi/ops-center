@@ -1,0 +1,31 @@
+---
+# One-shot resource-usage snapshot for a single container - remote
+# equivalent of security-worker's docker.sock stats access. Not a
+# historical graph (no per-remote-host cadvisor exists today) - a single
+# `docker stats --no-stream` snapshot, refreshed on demand by the frontend.
+# container_name is validated server-side (same _DOCKER_NAME_RE as
+# container-control.yml) before this ever runs.
+- name: Fetch one-shot container stats
+  hosts: all
+  gather_facts: false
+  vars:
+    docker_json_format: "{% raw %}{{json .}}{% endraw %}"
+
+  tasks:
+    - name: "Fetch stats snapshot for {{ container_name }}"
+      ansible.builtin.command:
+        argv:
+          - docker
+          - stats
+          - "--no-stream"
+          - "--format"
+          - "{{ docker_json_format }}"
+          - "{{ container_name }}"
+      register: result
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ ((result.stdout | from_json) if (result.rc == 0 and result.stdout) else {}) | to_json }}

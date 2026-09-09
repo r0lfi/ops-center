@@ -1,0 +1,36 @@
+{
+  "title": "Systemd Services",
+  "uid": "ops-systemd-services",
+  "tags": ["ops-center"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Monitored Units",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "ops_center_monitored_unit_active", "format": "table", "instant": true, "refId": "A" }],
+      "fieldConfig": {
+        "defaults": { "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Value" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }] }
+        ]
+      },
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true }, "renameByName": { "hostname": "Host", "unit": "Unit", "Value": "Active" } } }]
+    },
+    {
+      "id": 2,
+      "title": "Failed Units (any, not just monitored)",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "node_systemd_unit_state{state=\"failed\"} == 1", "format": "table", "instant": true, "refId": "A" }],
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "state": true, "Value": true }, "renameByName": { "hostname": "Host", "name": "Unit" } } }]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+---
+# Read-only network listing for the Docker Hosts UI's Networks tab. Same
+# isolation/tolerance conventions as docker-images.yml.
+- name: List Docker networks
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Check whether docker is available
+      ansible.builtin.command: which docker
+      register: docker_present
+      changed_when: false
+      failed_when: false
+
+    - name: List and inspect all networks
+      when: docker_present.rc == 0
+      # xargs piping needs a real shell - no `argv:` equivalent for this.
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          docker network ls -q | xargs -r docker network inspect
+        executable: /bin/bash
+      register: network_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'networks':
+          ((network_inspect.stdout | from_json) if (docker_present.rc == 0 and network_inspect.stdout) else [])}
+          | to_json }}

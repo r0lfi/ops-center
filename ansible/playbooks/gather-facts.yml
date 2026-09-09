@@ -1,0 +1,16 @@
+---
+# Pure fact-gathering. ops-worker parses the `runner_on_ok` event for the
+# `setup` action out of the event stream to update hosts.operating_system /
+# os_version / last_ansible_run - this playbook never modifies the host.
+- name: Gather facts
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Summarize key facts
+      ansible.builtin.debug:
+        msg: >-
+          distribution={{ ansible_distribution }}
+          version={{ ansible_distribution_version }}
+          kernel={{ ansible_kernel }}
+          arch={{ ansible_architecture }}
+          uptime_seconds={{ ansible_uptime_seconds | default('unknown') }}

@@ -1,0 +1,39 @@
+{
+  "title": "Blackbox Monitoring",
+  "uid": "ops-blackbox",
+  "tags": ["ops-center"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Probe Success",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "probe_success", "format": "table", "instant": true, "refId": "A" }],
+      "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true }, "renameByName": { "instance": "Target", "Value": "Success" } } }]
+    },
+    {
+      "id": 2,
+      "title": "Probe Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "expr": "probe_duration_seconds", "legendFormat": "{{instance}}", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "title": "TLS Certificate Expiry",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "expr": "probe_ssl_earliest_cert_expiry - time()", "legendFormat": "{{instance}}", "refId": "A" }]
+    }
+  ]
+}

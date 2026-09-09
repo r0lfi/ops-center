@@ -1,0 +1,47 @@
+---
+# One-shot bounded-window event history for a remote managed host. Unlike
+# a bare `docker events` (blocks forever - no persistent channel exists to
+# a remote host, see security/events.py for why ops-host gets a real
+# continuous listener and remote hosts don't), `--since ... --until now`
+# makes this a legitimate one-shot command: it exits on its own once
+# `--until` is reached.
+- name: Fetch a bounded window of Docker events
+  hosts: all
+  gather_facts: false
+  vars:
+    docker_json_format: "{% raw %}{{json .}}{% endraw %}"
+
+  tasks:
+    # docker events' --until does not accept the literal word "now" (only a
+    # timestamp/duration) - discovered when this silently produced an empty
+    # result (failed_when: false below hid the actual "failed to parse
+    # value as time or duration" error). Resolved from the target's own
+    # clock rather than the controller's, so clock drift between hosts
+    # can't shift the window.
+    - name: Resolve current time on the target
+      ansible.builtin.command:
+        argv: ["date", "-u", "+%s"]
+      register: now_epoch
+      changed_when: false
+
+    - name: "Docker events since: {{ since }}"
+      ansible.builtin.command:
+        argv:
+          - docker
+          - events
+          - "--since"
+          - "{{ since }}"
+          - "--until"
+          - "{{ now_epoch.stdout }}"
+          - "--format"
+          - "{{ docker_json_format }}"
+      register: result
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured results
+      vars:
+        event_lines: "{{ (result.stdout_lines | default([])) | map('from_json') | list }}"
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {'events': (event_lines if result.rc == 0 else [])} | to_json }}

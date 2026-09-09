@@ -1,0 +1,28 @@
+---
+# Installs ALL pending updates (not just security). Supports rolling
+# batches via `serial` (defaults to 1 = fully sequential).
+- name: Install all pending updates
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: "{{ batch_size | default(1) }}"
+
+  tasks:
+    - name: RHEL family - install all updates
+      when: ansible_os_family == "RedHat"
+      # This playbook's entire purpose is installing everything available -
+      # "latest" is intentional, not an idempotency oversight.
+      ansible.builtin.dnf:  # noqa: package-latest
+        name: "*"
+        state: latest
+
+    - name: Debian family - full dist-upgrade
+      when: ansible_os_family == "Debian"
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: true
+
+    - name: Debian family - remove no-longer-needed packages
+      when: ansible_os_family == "Debian"
+      ansible.builtin.apt:
+        autoremove: true

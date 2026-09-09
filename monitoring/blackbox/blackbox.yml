@@ -1,0 +1,31 @@
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4
+
+  https_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      preferred_ip_protocol: ip4
+      tls_config:
+        insecure_skip_verify: false
+
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: ip4
+
+  dns:
+    prober: dns
+    timeout: 5s
+    dns:
+      query_name: "."
+      query_type: "NS"

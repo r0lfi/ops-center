@@ -1,0 +1,39 @@
+---
+# Runs one command inside a container on a managed host - the Containers
+# Agent's container_exec tool (worker_ai/ai/tools/exec_tools.py), always
+# approval-gated like run-shell-command.yml for the same reason: this is
+# unrestricted execution, just scoped to inside a container instead of the
+# host. container_name is validated server-side (_DOCKER_NAME_RE) before
+# this ever runs.
+- name: Run a command inside one container (Containers Agent)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "Exec in container: {{ container_name }}"
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ container_name }}"
+          - sh
+          - -c
+          # container_command is loaded via a !unsafe-tagged vars file, not
+          # the plain extravars dict - see run-shell-command.yml and
+          # worker/tasks.py::_UNSAFE_EXTRAVAR_KEYS for why (a command
+          # containing literal '{{ }}' would otherwise get re-templated
+          # and fail).
+          - "{{ container_command }}"
+      register: exec_result
+      changed_when: true
+      failed_when: false
+
+    - name: Emit structured query result
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {
+            'rc': exec_result.rc,
+            'stdout': exec_result.stdout,
+            'stderr': exec_result.stderr
+          } | to_json }}

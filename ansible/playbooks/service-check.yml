@@ -1,0 +1,54 @@
+---
+# Read-only. Reports the state of the systemd units listed in `services`,
+# and publishes a per-unit node_exporter textfile metric so a single static
+# Prometheus alert rule (MonitoredServiceDown) can fire for exactly the
+# units an operator explicitly opted into monitoring - not every unit on
+# the box.
+- name: Check systemd unit status
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    # Not `vars: services: "{{ services | default([]) }}"` - a vars: entry
+    # that references its own name in a default() is rejected by
+    # ansible-core as a recursive template. set_fact into a different name
+    # instead, so `services` (an optional extra_var) can still be absent.
+    - name: Resolve monitored services list
+      ansible.builtin.set_fact:
+        monitored_services: "{{ services | default([]) }}"
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Report status per requested unit
+      ansible.builtin.debug:
+        msg: "{{ item }}: {{ ansible_facts.services[item].state | default('unknown') }}"
+      loop: "{{ monitored_services }}"
+
+    # Structured passthrough for the AI Linux Agent's get_service_status
+    # tool (worker_ai/ai/tools/linux_tools.py) - see worker/tasks.py's
+    # QUERY_MARKER.
+    - name: Build structured status list
+      ansible.builtin.set_fact:
+        service_status_list: "{{ (service_status_list | default([])) + [{'service': item, 'state': ansible_facts.services[item].state | default('unknown')}] }}"
+      loop: "{{ monitored_services }}"
+
+    - name: Emit structured query result
+      ansible.builtin.debug:
+        msg: "OPS_CENTER_QUERY_RESULT:{{ {'services': service_status_list | default([])} | to_json }}"
+
+    - name: Publish monitored-unit textfile metric
+      when: monitored_services | length > 0
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile_collector/ops_center_services.prom
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # HELP ops_center_monitored_unit_active Whether an explicitly monitored systemd unit is active.
+          # TYPE ops_center_monitored_unit_active gauge
+          {% for unit in monitored_services %}
+          ops_center_monitored_unit_active{unit="{{ unit }}"} {{ 1 if (ansible_facts.services[unit].state | default('')) == 'running' else 0 }}
+          {% endfor %}
+      failed_when: false

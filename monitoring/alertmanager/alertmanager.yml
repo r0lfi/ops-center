@@ -1,0 +1,12 @@
+route:
+  receiver: default
+  group_by: ["alertname", "hostname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  # No notification integration configured yet - alerts are visible in
+  # Alertmanager/Grafana/Ops Center itself. Phase 5 wires real routing and,
+  # once the operator provides one, a webhook/email/etc receiver here.
+  - name: default

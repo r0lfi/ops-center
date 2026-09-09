@@ -1,0 +1,35 @@
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.52.4
+pydantic==2.13.4
+pydantic-settings==2.15.0
+sqlalchemy==2.0.52
+asyncpg==0.31.0
+psycopg[binary]==3.3.4
+alembic==1.19.1
+redis==8.1.0
+httpx==0.28.1
+python-multipart==0.0.32
+asyncssh==2.23.1
+celery==5.4.0
+msgpack>=1.2.1
+
+# Auth (Phase 10). python-jose was deliberately dropped in Phase 1: unused
+# then, and pulled in ecdsa (CVE-2024-23342, no fix available upstream)
+# plus its own CRITICAL CVE-2024-33663. PyJWT has no such transitive issue.
+argon2-cffi==23.1.0
+# Pinned to 2.13.0, not the version originally picked (2.10.1): a Trivy scan
+# of the built image caught CVE-2026-32597 and CVE-2026-48526 (the latter an
+# actual JWT auth-bypass) in 2.10.1, both fixed by 2.13.0.
+pyjwt==2.13.0
+
+# Validates host-group cron_expression at create/update time.
+croniter==6.0.0
+
+# Validates playbook YAML parses before saving an edit from the in-app editor.
+pyyaml==6.0.3
+
+# Reads the local DB-IP City Lite MMDB for Traffic Map geolocation - no
+# external API call per request. Same file format MaxMind's GeoLite2 uses,
+# so this reader works for either source.
+maxminddb==3.1.1

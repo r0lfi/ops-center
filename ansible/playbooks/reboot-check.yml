@@ -1,0 +1,48 @@
+---
+# Read-only. Determines whether a reboot is required and reports it via a
+# debug message the worker parses out of the event stream.
+- name: Check whether a reboot is required
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: RHEL family - check needs-restarting
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.command: needs-restarting -r
+      register: rhel_restart_check
+      changed_when: false
+      failed_when: false  # rc=1 means "reboot needed", not a failure
+
+    - name: Debian family - check for reboot-required marker
+      when: ansible_os_family == "Debian"
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: debian_reboot_marker
+
+    - name: Set reboot_required fact
+      ansible.builtin.set_fact:
+        reboot_required: >-
+          {{
+            (ansible_os_family == "RedHat" and rhel_restart_check.rc == 1)
+            or (ansible_os_family == "Debian" and debian_reboot_marker.stat.exists)
+          }}
+
+    - name: Report reboot status
+      ansible.builtin.debug:
+        msg: "reboot_required={{ reboot_required }}"
+
+    - name: Publish reboot_required as a node_exporter textfile metric
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile_collector/ops_center_reboot.prom
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # HELP ops_center_reboot_required Whether the host has pending updates that require a reboot.
+          # TYPE ops_center_reboot_required gauge
+          ops_center_reboot_required {{ 1 if reboot_required | bool else 0 }}
+      # Only meaningful once install-node-exporter.yml has created the
+      # textfile collector directory; skip quietly on hosts without it yet
+      # rather than failing the whole reboot check.
+      failed_when: false

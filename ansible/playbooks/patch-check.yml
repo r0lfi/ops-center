@@ -1,0 +1,103 @@
+---
+# Read-only. Never modifies the host - collects pending package counts and,
+# on RHEL family, security advisory detail via dnf updateinfo.
+#
+# Output is deliberately emitted as JSON behind fixed OPS_CENTER_* markers
+# (one per debug message) rather than folded into free text: worker/
+# patch_parser.py parses exactly these markers out of the event log after
+# the job completes. Keep the markers and their payload shape in sync with
+# that parser if this playbook changes.
+- name: Patch scan (read-only)
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: RHEL family - refresh metadata
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.command: dnf makecache
+      changed_when: false
+
+    - name: RHEL family - list pending updates
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.command: dnf -q check-update
+      register: rhel_pending
+      changed_when: false
+      failed_when: rhel_pending.rc not in (0, 100)  # dnf returns 100 when updates are available
+
+    - name: RHEL family - list pending security advisories
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.command: dnf -q updateinfo list security
+      register: rhel_security
+      changed_when: false
+      failed_when: false
+
+    - name: RHEL family - get CVE IDs per advisory
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.command: dnf -q updateinfo info security
+      register: rhel_advisory_detail
+      changed_when: false
+      failed_when: false
+
+    - name: RHEL family - check reboot required
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.command: needs-restarting -r
+      register: rhel_restart_check
+      changed_when: false
+      failed_when: false
+
+    - name: RHEL family - emit structured results
+      when: ansible_os_family == "RedHat"
+      ansible.builtin.debug:
+        # Deliberately kept as one Jinja expression (dict literal + to_json)
+        # rather than pre-building the dict via set_fact: a set_fact value
+        # that's a plain YAML dict with per-key "{{ expr }}" strings goes
+        # through non-native templating per key, which can turn the
+        # reboot_required boolean into the *string* "True"/"False" instead
+        # of a real JSON boolean depending on templating mode - staying
+        # inside one Jinja expression keeps it a native Python bool until
+        # to_json serializes it. The `>-` folds these lines into one string
+        # for Jinja, purely to keep line length lint-clean.
+        msg: >-
+          OPS_CENTER_PATCH_CHECK:{{ {'family': 'rhel',
+          'pending': rhel_pending.stdout_lines,
+          'security': rhel_security.stdout_lines,
+          'advisory_detail': rhel_advisory_detail.stdout_lines,
+          'reboot_required': (rhel_restart_check.rc == 1)} | to_json }}
+
+    - name: Debian family - refresh apt cache
+      when: ansible_os_family == "Debian"
+      ansible.builtin.apt:
+        update_cache: true
+      changed_when: false
+
+    - name: Debian family - list upgradable packages
+      when: ansible_os_family == "Debian"
+      ansible.builtin.command: apt list --upgradable
+      register: debian_pending
+      changed_when: false
+
+    - name: Debian family - list security-pocket upgrades
+      when: ansible_os_family == "Debian"
+      ansible.builtin.shell: |
+        set -o pipefail
+        apt list --upgradable 2>/dev/null | grep -i security || true
+      args:
+        executable: /bin/bash
+      register: debian_security
+      changed_when: false
+
+    - name: Debian family - check reboot required
+      when: ansible_os_family == "Debian"
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: debian_reboot_marker
+
+    - name: Debian family - emit structured results
+      when: ansible_os_family == "Debian"
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_PATCH_CHECK:{{ {'family': 'debian',
+          'pending': debian_pending.stdout_lines[1:],
+          'security': debian_security.stdout_lines,
+          'reboot_required': debian_reboot_marker.stat.exists} | to_json }}

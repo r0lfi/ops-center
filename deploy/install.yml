@@ -1,0 +1,194 @@
+---
+- name: Install Ops Center on a dedicated Linux server
+  hosts: ops_center
+  become: true
+  gather_facts: true
+  vars:
+    ops_install_dir: /opt/ops-center
+    ops_data_root: /var/lib/ops-center
+    ops_install_docker: true
+    ops_build_images: true
+    ops_image_prefix: ops-center
+    ops_image_tag: local
+    ops_bind_address: 127.0.0.1
+    ops_http_port: 8080
+    ops_timezone: UTC
+  vars_prompt:
+    - name: ops_admin_username
+      prompt: Ops Center administrator username
+      private: false
+      default: admin
+    - name: ops_admin_password
+      prompt: Administrator password (at least 12 characters)
+      private: true
+      confirm: true
+  pre_tasks:
+    - name: Validate installer inputs
+      ansible.builtin.assert:
+        that:
+          - ops_admin_username | length > 0
+          - ops_admin_password | length >= 12
+          - ops_release_archive is defined
+          - ops_install_dir is match('^/[A-Za-z0-9_/-]+$')
+          - ops_data_root is match('^/[A-Za-z0-9_/-]+$')
+          - ops_install_dir not in ['/', '/etc', '/usr', '/var', '/opt', '/home']
+          - ops_data_root not in ['/', '/etc', '/usr', '/var', '/opt', '/home']
+          - ops_http_port | int > 0
+          - ops_http_port | int < 65536
+      no_log: true
+    - name: Check OS for automatic Docker installation
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution in ['AlmaLinux', 'Rocky', 'RedHat']
+          - ansible_distribution_major_version in ['9', '10']
+        fail_msg: Automatic Docker setup targets AlmaLinux/Rocky/RHEL 9 or 10. Otherwise install Docker Compose v2 yourself and set ops_install_docker=false.
+      when: ops_install_docker | bool
+  tasks:
+    - name: Read installed packages
+      ansible.builtin.package_facts:
+        manager: auto
+      when: ops_install_docker | bool
+    - name: Refuse automatic removal of conflicting container packages
+      ansible.builtin.assert:
+        that:
+          - "'podman-docker' not in ansible_facts.packages"
+          - "'docker' not in ansible_facts.packages"
+        fail_msg: Resolve conflicting container packages manually before installing Docker CE.
+      when: ops_install_docker | bool
+    - name: Configure official Docker repository
+      ansible.builtin.yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable
+        baseurl: https://download.docker.com/linux/rhel/$releasever/$basearch/stable
+        gpgcheck: true
+        gpgkey: https://download.docker.com/linux/rhel/gpg
+      when: ops_install_docker | bool
+    - name: Install Docker Engine and Compose
+      ansible.builtin.dnf:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin, python3, git]
+        state: present
+      when: ops_install_docker | bool
+    - name: Start and enable Docker
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+      when: ops_install_docker | bool
+    - name: Verify Docker Compose plugin
+      ansible.builtin.command: docker compose version
+      changed_when: false
+    - name: Verify Git is available
+      ansible.builtin.command: git --version
+      changed_when: false
+    - name: Inspect Docker socket group
+      ansible.builtin.stat:
+        path: /var/run/docker.sock
+      register: ops_socket
+    - name: Require local Docker socket
+      ansible.builtin.assert:
+        that: ops_socket.stat.exists
+    - name: Create installation directory
+      ansible.builtin.file:
+        path: "{{ ops_install_dir }}"
+        state: directory
+        mode: '0755'
+    - name: Extract sanitized release (runtime .env is outside the archive)
+      ansible.builtin.unarchive:
+        src: "{{ ops_release_archive }}"
+        dest: "{{ ops_install_dir }}"
+        owner: root
+        group: root
+    - name: Create runtime data directories
+      ansible.builtin.file:
+        path: "{{ ops_data_root }}/{{ item.path }}"
+        state: directory
+        owner: "{{ item.uid }}"
+        group: "{{ item.uid }}"
+        mode: "{{ item.mode | default('0750') }}"
+      loop:
+        - {path: '', uid: 0, mode: '0711'}
+        - {path: secrets, uid: 1000}
+        - {path: secrets/ai-providers, uid: 1000, mode: '0700'}
+        - {path: secrets/integrations, uid: 1000, mode: '0700'}
+        - {path: prometheus, uid: 65534, mode: '0755'}
+        - {path: prometheus/file_sd, uid: 1000, mode: '0755'}
+        - {path: prometheus/data, uid: 65534}
+        - {path: alertmanager, uid: 65534}
+        - {path: grafana, uid: 472}
+        - {path: loki, uid: 10001}
+        - {path: postgres, uid: 999, mode: '0700'}
+        - {path: redis, uid: 999}
+        - {path: trivy, uid: 0}
+        - {path: geoip, uid: 1000, mode: '0755'}
+        - {path: docker-stacks, uid: 1000}
+    - name: Initialize empty monitoring discovery without replacing existing inventory
+      ansible.builtin.copy:
+        content: '[]'
+        dest: "{{ ops_data_root }}/prometheus/file_sd/node_exporters.json"
+        owner: '1000'
+        group: '1000'
+        mode: '0644'
+        force: false
+    - name: Let API edit bundled automation playbooks
+      ansible.builtin.file:
+        path: "{{ ops_install_dir }}/ansible/playbooks"
+        owner: '1000'
+        group: '1000'
+        recurse: true
+    - name: Generate unique secrets once and preserve existing configuration
+      ansible.builtin.command:
+        argv: [python3, scripts/generate-env.py, .env]
+        chdir: "{{ ops_install_dir }}"
+        stdin: "{{ {'DATA_ROOT': ops_data_root, 'DOCKER_GID': ops_socket.stat.gid | string, 'OPS_LOCAL_HOSTNAME': ansible_hostname, 'BIND_ADDRESS': ops_bind_address, 'PROXY_HTTP_PORT': ops_http_port | string, 'TZ': ops_timezone, 'IMAGE_PREFIX': ops_image_prefix, 'IMAGE_TAG': ops_image_tag} | to_json }}"
+      register: ops_env_result
+      changed_when: "'Created .env' in ops_env_result.stdout"
+      no_log: true
+    - name: Protect runtime environment file
+      ansible.builtin.file:
+        path: "{{ ops_install_dir }}/.env"
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Initialize source index for optional AI code tools
+      ansible.builtin.command:
+        argv: [git, init]
+        chdir: "{{ ops_install_dir }}"
+        creates: "{{ ops_install_dir }}/.git"
+    - name: Index public source files for AI code tools
+      ansible.builtin.command:
+        argv: [git, add, backend, frontend, worker, worker_ai, security, ansible, monitoring, proxy, scripts, docs, README.md]
+        chdir: "{{ ops_install_dir }}"
+      changed_when: false
+    - name: Validate Compose configuration without printing environment values
+      ansible.builtin.command:
+        argv: [docker, compose, config, --quiet]
+        chdir: "{{ ops_install_dir }}"
+      changed_when: false
+      no_log: true
+    - name: Build application images locally
+      ansible.builtin.command:
+        argv: [docker, compose, build, --pull]
+        chdir: "{{ ops_install_dir }}"
+      when: ops_build_images | bool
+      changed_when: true
+    - name: Pull published application images instead of building
+      ansible.builtin.command:
+        argv: [docker, compose, pull]
+        chdir: "{{ ops_install_dir }}"
+      when: not ops_build_images | bool
+      changed_when: true
+    - name: Start services and wait for health checks and database migrations
+      ansible.builtin.command:
+        argv: [docker, compose, up, -d, --no-build, --wait, --wait-timeout, '600']
+        chdir: "{{ ops_install_dir }}"
+      changed_when: true
+    - name: Create administrator without placing password in process arguments or logs
+      ansible.builtin.command:
+        argv: [docker, compose, exec, -T, ops-api, python, -m, app.management.bootstrap_admin]
+        chdir: "{{ ops_install_dir }}"
+        stdin: "{{ {'username': ops_admin_username, 'password': ops_admin_password} | to_json }}"
+      no_log: true
+      changed_when: true
+    - name: Installation result
+      ansible.builtin.debug:
+        msg: "Ops Center is running. Default access: SSH tunnel to server port {{ ops_http_port }}. Existing .env values are preserved on reruns; configure HTTPS before shared access."

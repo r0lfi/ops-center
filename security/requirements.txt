@@ -1,0 +1,7 @@
+celery==5.4.0
+redis==5.2.1
+sqlalchemy==2.0.52
+psycopg[binary]==3.3.4
+pydantic-settings==2.15.0
+docker==7.1.0
+httpx==0.28.1

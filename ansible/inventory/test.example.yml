@@ -1,0 +1,8 @@
+# Development/test inventory - deliberately localhost-only so
+# `ansible-playbook --syntax-check` / ansible-lint / molecule-style checks
+# never touch a real host. Production inventory is generated per-job by
+# ops-worker directly from the hosts table, never from a static file.
+all:
+  hosts:
+    localhost:
+      ansible_connection: local

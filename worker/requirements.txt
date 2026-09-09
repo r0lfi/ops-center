@@ -1,0 +1,16 @@
+celery==5.4.0
+celery-redbeat==2.4.2
+redis==5.2.1
+sqlalchemy==2.0.52
+psycopg[binary]==3.3.4
+pydantic-settings==2.15.0
+ansible-core==2.18.19
+ansible-runner==2.4.0
+
+# UniFi controller API calls for the camera watchdog
+# (worker.scheduled_tasks.check_camera_connectivity / worker.unifi_client).
+httpx==0.28.1
+
+# Matches scheduled patch groups' cron_expression against "now" every
+# minute in worker.scheduled_tasks.run_scheduled_patch_groups.
+croniter==6.0.0

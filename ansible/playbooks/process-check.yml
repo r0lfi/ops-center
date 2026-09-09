@@ -1,0 +1,27 @@
+---
+# Read-only. Top processes by CPU, for the AI Linux Agent's
+# get_running_processes tool (worker_ai/ai/tools/linux_tools.py) - not
+# exposed elsewhere in the UI yet.
+- name: Top processes snapshot
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Capture top processes by CPU
+      ansible.builtin.shell:
+        cmd: "set -o pipefail && ps -eo pid,comm,pcpu,pmem --no-headers --sort=-pcpu | head -n {{ process_limit | default(15) }}"
+        executable: /bin/bash
+      changed_when: false
+      register: top_processes
+
+    - name: Report top processes
+      ansible.builtin.debug:
+        var: top_processes.stdout_lines
+
+    - name: Emit structured query result
+      ansible.builtin.debug:
+        # Each line is "PID COMMAND CPU% MEM%" (raw ps columns, not
+        # further parsed) - the tool description passed to the LLM
+        # explains this column order.
+        msg: "OPS_CENTER_QUERY_RESULT:{{ {'processes': top_processes.stdout_lines} | to_json }}"
