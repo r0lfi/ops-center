@@ -128,7 +128,9 @@ Ops Center includes an optional portable HA reference deployment for **two appli
 
 The witness participates in quorum but holds no PostgreSQL data or application signing credentials.
 
-The reference HA deployment does **not** automatically provision a floating application VIP, keepalived, redundant external load balancer or HA monitoring storage. Provide redundant HTTPS ingress/load balancing separately if required.
+The reference HA bundle deliberately leaves external application ingress to the operator. In the author's deployment, **Nginx Proxy Manager is placed behind a floating application VIP** to provide a stable HTTPS endpoint in front of both active application nodes. This is a deployment example rather than a hard dependency: the public HA bundle does **not** automatically provision Nginx Proxy Manager, the floating application VIP, keepalived or another redundant external load balancer. Operators can provide an equivalent redundant ingress design that fits their environment.
+
+HA monitoring storage is also not shared automatically; Prometheus, Loki and related local data remain node-local in the reference topology.
 
 See **[HA / cluster deployment](docs/ha.md)** for the complete topology, network boundaries, failover tests, backup guidance and upgrade procedure.
 
@@ -179,43 +181,52 @@ The architecture includes a dedicated AI worker and provider integrations while 
 ### HA / cluster deployment
 
 ```text
-                    Redundant HTTPS ingress / load balancer
-                                  (user supplied)
-                                         │
-                    ┌────────────────────┴────────────────────┐
-                    │                                         │
-             ┌──────▼──────┐                           ┌──────▼──────┐
-             │  App Node 1 │                           │  App Node 2 │
-             │             │                           │             │
-             │ API         │                           │ API         │
-             │ Frontend    │                           │ Frontend    │
-             │ Workers     │                           │ Workers     │
-             │ Scheduler   │                           │ Scheduler   │
-             │ AI/Security │                           │ AI/Security │
-             └──────┬──────┘                           └──────┬──────┘
-                    │                                         │
-          local pg-router:5432                      local pg-router:5432
-                    │                                         │
-                    └────────────────────┬────────────────────┘
-                                         │
-                         ┌───────────────▼───────────────┐
-                         │      PostgreSQL / Patroni     │
-                         │   Primary  ⇄  Hot Replica     │
-                         └───────────────┬───────────────┘
-                                         │
-                              etcd consensus / quorum
-                    ┌────────────────────┼────────────────────┐
-                    │                    │                    │
-               App Node 1          App Node 2            Witness
+                           HTTPS clients
+                                │
+                   ┌────────────▼────────────┐
+                   │ Floating app VIP        │
+                   │ + Nginx Proxy Manager   │
+                   │ (author deployment)     │
+                   └────────────┬────────────┘
+                                │
+                   redundant ingress to app tier
+                                │
+                    ┌───────────┴───────────┐
+                    │                       │
+             ┌──────▼──────┐         ┌──────▼──────┐
+             │  App Node 1 │         │  App Node 2 │
+             │             │         │             │
+             │ API         │         │ API         │
+             │ Frontend    │         │ Frontend    │
+             │ Workers     │         │ Workers     │
+             │ Scheduler   │         │ Scheduler   │
+             │ AI/Security │         │ AI/Security │
+             └──────┬──────┘         └──────┬──────┘
+                    │                       │
+          local pg-router:5432    local pg-router:5432
+                    │                       │
+                    └───────────┬───────────┘
+                                │
+                    ┌───────────▼────────────┐
+                    │ PostgreSQL / Patroni   │
+                    │ Primary ⇄ Hot Replica  │
+                    └───────────┬────────────┘
+                                │
+                       etcd consensus/quorum
+                    ┌───────────┼───────────┐
+                    │           │           │
+               App Node 1  App Node 2    Witness
 
-                    ┌─────────────────────────────────────────┐
-                    │             Redis HA                    │
-                    │      Primary  ⇄  Hot Replica            │
-                    │                                         │
-                    │ Sentinel + Sentinel + Witness Sentinel  │
-                    │               quorum 2                  │
-                    └─────────────────────────────────────────┘
+                    ┌───────────────────────────────┐
+                    │           Redis HA            │
+                    │   Primary ⇄ Hot Replica       │
+                    │                               │
+                    │ Sentinel + Sentinel + Witness │
+                    │           quorum 2            │
+                    └───────────────────────────────┘
 ```
+
+The **floating application VIP + Nginx Proxy Manager** shown above documents the author's production-style ingress pattern. It is intentionally external to the portable HA bundle; another redundant reverse proxy/load balancer design can be used instead.
 
 Each application node routes database traffic through its local HAProxy endpoint, which checks Patroni and follows the current PostgreSQL primary. Redis-aware clients and Celery discover the current Redis primary through Sentinel.
 
@@ -229,6 +240,7 @@ Each application node routes database traffic through its local HAProxy endpoint
 **Containers:** Docker, Docker Compose  
 **Data:** PostgreSQL, Redis  
 **HA:** Patroni, etcd, HAProxy, Redis Sentinel, RedBeat  
+**Example redundant ingress:** Nginx Proxy Manager + floating VIP  
 **Monitoring:** Prometheus, Grafana, Loki, Alertmanager, Blackbox Exporter  
 **Security:** Trivy
 
@@ -366,6 +378,8 @@ python3 scripts/package.py /tmp/ops-center-public.tar.gz
 ```
 
 The HA preparation playbook installs the generated configuration but **does not start the services**. Follow the documented startup order so Patroni/etcd and Redis/Sentinel establish healthy quorum before both application nodes are brought online.
+
+Application ingress is deliberately external to this bundle. The author's deployment uses **Nginx Proxy Manager behind a floating VIP** in front of both application nodes. You can reproduce that pattern or use another redundant HTTPS reverse proxy/load balancer appropriate for your environment.
 
 For network requirements, port restrictions, startup order, switchover testing, failover behavior, backups and upgrades, follow the complete **[HA installation and failover guide](docs/ha.md)**.
 
