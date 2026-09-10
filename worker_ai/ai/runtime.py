@@ -142,6 +142,11 @@ def run_agent(db: Session, agent: AIAgent, input_message: str, *, task_id: str |
     except TaskCancelled:
         set_agent_state(db, agent, "idle" if agent.enabled else "disabled", "Stopped by user", None, task_id)
         raise
+    except Exception as exc:
+        # Also unwind delegated agents when a tool or database operation fails.
+        db.rollback()
+        set_agent_state(db, agent, "error", str(exc), None, task_id)
+        raise
 
 
 def _run_agent(db: Session, agent: AIAgent, input_message: str, *, task_id: str | None = None, depth: int = 0) -> RunResult:

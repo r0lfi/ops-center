@@ -155,12 +155,15 @@ def _run_agent_task(task_id: str, celery_task_id: str | None) -> None:
             task.data_sources = list(dict.fromkeys(result.data_sources))
             task.status = "completed"
         except TaskCancelled:
+            db.rollback()
             db.refresh(task)
             task.status = "cancelled"
         except Exception as exc:  # noqa: BLE001 - must never crash the worker silently
             # A genuinely unexpected bug, not a normal provider/tool
             # failure (those are already handled inside run_agent) - still
             # needs the agent visibly marked down rather than left mid-task.
+            # Recover a failed SQL transaction before recording the task failure.
+            db.rollback()
             db.refresh(task, with_for_update=True)
             if task.status != "cancelled":
                 task.status = "failed"
