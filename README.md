@@ -57,10 +57,8 @@ Ansible is installed automatically in a project-local virtual environment. Docke
 
 ### 1. Clone the repository on your server
 
-Replace `YOUR-ACCOUNT` and the repository name below with the GitHub repository you want to install:
-
 ```bash
-git clone https://github.com/YOUR-ACCOUNT/ops-center.git
+git clone https://github.com/r0lfi/ops-center.git
 cd ops-center
 ```
 
