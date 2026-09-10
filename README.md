@@ -1,14 +1,19 @@
 # 🚀 Ops Center
 
-### Self-hosted AI-assisted operations platform for Linux, containers, automation, monitoring and security.
+### Self-hosted AI-assisted operations platform for Linux, containers, automation, monitoring, security and high availability.
 
 <p align="center">
-  <strong>Linux • Docker • Ansible • Monitoring • Security • Automation • AI Agents</strong>
+  <img width="1888" height="864" alt="Ops Center Operations Floor" src="https://github.com/user-attachments/assets/9335bef7-e456-41c4-9c38-03739fdb353b" />
+</p>
+
+<p align="center">
+  <strong>Linux • Docker • Ansible • Monitoring • Security • HA • Automation • AI Agents</strong>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Self--Hosted-Yes-success" alt="Self Hosted">
+  <img src="https://img.shields.io/badge/HA-Patroni%20%7C%20etcd%20%7C%20Sentinel-success" alt="High Availability">
   <img src="https://img.shields.io/badge/Linux-RHEL%20%7C%20AlmaLinux%20%7C%20Rocky-orange" alt="Linux">
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/Ansible-Automation-EE0000?logo=ansible&logoColor=white" alt="Ansible">
@@ -19,7 +24,7 @@
 
 ## What is Ops Center?
 
-**Ops Center** is an open-source, self-hosted operations platform built to bring infrastructure management into one interface.
+**Ops Center** is an open-source, self-hosted operations platform that brings infrastructure management, automation, observability, security and AI-assisted operations into one interface.
 
 Instead of constantly switching between monitoring dashboards, Ansible, vulnerability scanners, Docker tools, SSH sessions and AI assistants, Ops Center brings them together into a single operations environment.
 
@@ -33,12 +38,13 @@ Ops Center combines:
 - 📊 Monitoring and observability
 - 🔐 Vulnerability and security scanning
 - 🔄 Patching and scheduled operations
+- 🛡️ Optional HA / cluster deployment
 - 🤖 AI-assisted infrastructure operations
 - 🛰️ Interactive **2D and 3D Operations Floor**
 - 💬 Agent chat and task interaction
 - 📡 Optional integrations such as Nextcloud Talk and external AI providers
 
-> **Project status:** Ops Center is under active development. Test it in a lab environment before using it against production infrastructure.
+> **Project status:** Ops Center is under active development. Validate it in a lab environment before using it against production infrastructure.
 
 ---
 
@@ -102,17 +108,41 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Infrastructure findings
 - Vulnerability visibility
 
+### 🛡️ High Availability / Cluster
+
+Ops Center includes an optional portable HA reference deployment for **two application/database nodes plus an independent witness**.
+
+- Active application stack on both app nodes
+- PostgreSQL 17 HA with **Patroni**
+- **etcd** three-member quorum across both app nodes and the witness
+- PostgreSQL primary/replica streaming replication
+- Local **HAProxy `pg-router`** on each application node that follows the Patroni primary
+- Redis primary/replica topology
+- **Redis Sentinel** on both app nodes plus the witness, quorum 2
+- Redis/Celery primary discovery through Sentinel
+- RedBeat shared scheduling lock across application nodes
+- Cluster status page for PostgreSQL and Redis health
+- Administrative PostgreSQL **switchover from the UI**
+- Fresh HA topology and credentials generated outside the repository
+- Ansible-based preparation using `deploy/ha.yml`
+
+The witness participates in quorum but holds no PostgreSQL data or application signing credentials.
+
+The reference HA deployment does **not** automatically provision a floating application VIP, keepalived, redundant external load balancer or HA monitoring storage. Provide redundant HTTPS ingress/load balancing separately if required.
+
+See **[HA / cluster deployment](docs/ha.md)** for the complete topology, network boundaries, failover tests, backup guidance and upgrade procedure.
+
 ### AI
 
 AI functionality is optional — **Ops Center can operate without an AI provider configured**.
 
-The architecture includes a dedicated AI worker and provider integrations while keeping infrastructure execution separated into specialized workers.
-
-Bring your own provider credentials.
+The architecture includes a dedicated AI worker and provider integrations while keeping infrastructure execution separated into specialized workers. Bring your own provider credentials.
 
 ---
 
 ## 🏗️ Architecture
+
+### Standard deployment
 
 ```text
                          ┌──────────────────────┐
@@ -146,6 +176,49 @@ Bring your own provider credentials.
           PostgreSQL                                  Redis
 ```
 
+### HA / cluster deployment
+
+```text
+                    Redundant HTTPS ingress / load balancer
+                                  (user supplied)
+                                         │
+                    ┌────────────────────┴────────────────────┐
+                    │                                         │
+             ┌──────▼──────┐                           ┌──────▼──────┐
+             │  App Node 1 │                           │  App Node 2 │
+             │             │                           │             │
+             │ API         │                           │ API         │
+             │ Frontend    │                           │ Frontend    │
+             │ Workers     │                           │ Workers     │
+             │ Scheduler   │                           │ Scheduler   │
+             │ AI/Security │                           │ AI/Security │
+             └──────┬──────┘                           └──────┬──────┘
+                    │                                         │
+          local pg-router:5432                      local pg-router:5432
+                    │                                         │
+                    └────────────────────┬────────────────────┘
+                                         │
+                         ┌───────────────▼───────────────┐
+                         │      PostgreSQL / Patroni     │
+                         │   Primary  ⇄  Hot Replica     │
+                         └───────────────┬───────────────┘
+                                         │
+                              etcd consensus / quorum
+                    ┌────────────────────┼────────────────────┐
+                    │                    │                    │
+               App Node 1          App Node 2            Witness
+
+                    ┌─────────────────────────────────────────┐
+                    │             Redis HA                    │
+                    │      Primary  ⇄  Hot Replica            │
+                    │                                         │
+                    │ Sentinel + Sentinel + Witness Sentinel  │
+                    │               quorum 2                  │
+                    └─────────────────────────────────────────┘
+```
+
+Each application node routes database traffic through its local HAProxy endpoint, which checks Patroni and follows the current PostgreSQL primary. Redis-aware clients and Celery discover the current Redis primary through Sentinel.
+
 ---
 
 ## 🧰 Technology Stack
@@ -155,6 +228,7 @@ Bring your own provider credentials.
 **Automation:** Ansible  
 **Containers:** Docker, Docker Compose  
 **Data:** PostgreSQL, Redis  
+**HA:** Patroni, etcd, HAProxy, Redis Sentinel, RedBeat  
 **Monitoring:** Prometheus, Grafana, Loki, Alertmanager, Blackbox Exporter  
 **Security:** Trivy
 
@@ -205,7 +279,7 @@ The installer:
 1. Installs and starts Docker Engine and Compose from Docker's official RPM repository.
 2. Copies Ops Center to `/opt/ops-center` and creates persistent storage under `/var/lib/ops-center`.
 3. Generates PostgreSQL, Redis, API-signing and Grafana credentials in `/opt/ops-center/.env` with mode `0600`.
-4. Builds the five application images and downloads upstream service images.
+4. Builds the application images and downloads upstream service images.
 5. Starts the services, runs database migrations and waits for health checks.
 6. Creates the initial administrator account and stores its password as a hash in PostgreSQL.
 
@@ -223,11 +297,7 @@ From your workstation:
 ssh -L 8080:127.0.0.1:8080 your-user@your-server
 ```
 
-Open:
-
-```text
-http://localhost:8080
-```
+Open `http://localhost:8080` and sign in with the administrator account you created.
 
 Grafana is available at `/grafana/` with a separate generated administrator password.
 
@@ -273,43 +343,39 @@ Re-running preserves the existing `.env` and administrator credentials. Back up 
 
 ---
 
-## 🔐 Unattended Installation
+## 🛡️ HA / Cluster Installation
 
-For unattended deployments, provide administrator credentials using an **Ansible Vault-encrypted variable file**:
+The public distribution includes a generator and Ansible preparation playbook for **two application/database hosts and one independent witness**. The ordinary `deploy/install.yml` remains the single-server installer.
+
+The HA generator creates fresh credentials and configuration from your own inventory and deliberately keeps generated secrets outside the repository.
+
+High-level flow:
 
 ```bash
-bash scripts/install.sh \
-  -e @/secure/path/bootstrap.yml \
-  --ask-vault-pass
+python3 -m venv .venv-installer
+.venv-installer/bin/pip install 'ansible-core==2.18.19'
+.venv-installer/bin/python scripts/ha/generate.py ../ha-inventory.json ../ha-runtime
+python3 scripts/package.py /tmp/ops-center-public.tar.gz
+
+.venv-installer/bin/ansible-playbook \
+  -i ../ha-hosts.ini \
+  deploy/ha.yml \
+  --ask-become-pass \
+  -e ops_release_archive=/tmp/ops-center-public.tar.gz \
+  -e ops_ha_bundle="$(realpath ../ha-runtime)"
 ```
 
-Do not place passwords in command-line `-e` strings or commit private inventory/variable files.
+The HA preparation playbook installs the generated configuration but **does not start the services**. Follow the documented startup order so Patroni/etcd and Redis/Sentinel establish healthy quorum before both application nodes are brought online.
 
----
+For network requirements, port restrictions, startup order, switchover testing, failover behavior, backups and upgrades, follow the complete **[HA installation and failover guide](docs/ha.md)**.
 
-## HA / cluster installation
-
-The public release now includes a configurable two-node application/database
-cluster with a third witness, PostgreSQL/Patroni + etcd, Redis/Sentinel, and local
-HAProxy database routing. The Cluster page displays the configured members and
-allows administrators to request PostgreSQL switchover.
-
-Follow **[the HA installation and failover guide](docs/ha.md)** for requirements,
-private inventory generation, the `deploy/ha.yml` Ansible preparation playbook,
-startup order, backups and tests. The regular installer remains single-server.
-HA configuration is generated with fresh secrets outside the repository; no
-existing installation data is included. Redundant ingress, secure file
-synchronization and HA monitoring require additional configuration as described
-in the guide.
-
-The AI menu also includes searchable technical documentation explaining agents,
-tools, approval handling, memory and the application runtime.
+> HA improves service availability but is not a zero-downtime or exactly-once guarantee. PostgreSQL replication is asynchronous by default, Celery jobs may be redelivered after failures, and monitoring data remains local to each node in the reference architecture.
 
 ---
 
 ## 🐳 Container Images
 
-Ops Center builds five custom application images:
+Ops Center builds these custom application images:
 
 | Image | Purpose |
 | --- | --- |
@@ -318,9 +384,7 @@ Ops Center builds five custom application images:
 | `worker` | Ansible execution and scheduler |
 | `ai-worker` | Optional AI agent execution |
 | `security-worker` | Security scanning and Docker operations |
-
-The image helper and GitHub image workflow also build `postgres-ha`, the optional
-PostgreSQL 17/Patroni image used by the [HA deployment](docs/ha.md).
+| `postgres-ha` | PostgreSQL 17 + Patroni image for the optional HA deployment |
 
 The repository contains source code and Dockerfiles rather than prebuilt image archives. Building during installation is the default.
 
@@ -394,6 +458,7 @@ See:
 - [Integrations](docs/integrations.md)
 - [Security](docs/security.md)
 - [Operations](docs/operations.md)
+- [HA / cluster deployment](docs/ha.md)
 
 ---
 
@@ -402,16 +467,18 @@ See:
 ```text
 ops-center/
 ├── frontend/          React / TypeScript frontend
-├── backend/           FastAPI backend
+├── backend/           FastAPI backend and Cluster API
 ├── worker/            Ansible execution and scheduler
 ├── worker_ai/         AI agents, providers and tools
 ├── security/          Security and Docker operations
 ├── ansible/           Infrastructure automation
-├── deploy/            Ansible installation
+├── deploy/            Standard + HA Ansible deployment
+├── ha/                HA PostgreSQL/Patroni image and supporting files
 ├── monitoring/        Prometheus/Grafana configuration
 ├── proxy/             Caddy reverse proxy
-├── scripts/           Installation and development tools
-├── docs/              Documentation
+├── scripts/ha/        Portable HA topology/config generator
+├── scripts/           Installation, testing and packaging tools
+├── docs/              Documentation including HA deployment
 └── .github/workflows/ GitHub Actions
 ```
 
@@ -429,6 +496,8 @@ cd ..
 bash scripts/test/run-tests.sh
 ```
 
+CI validates both the standard installer and HA installer Ansible syntax.
+
 Before publishing source or a release:
 
 ```bash
@@ -443,6 +512,7 @@ Automated scanning cannot guarantee that arbitrary new content contains no sensi
 Never publish:
 
 - `.env`
+- HA runtime bundles or generated HA inventories
 - SSH private keys
 - Database dumps
 - Backups
@@ -460,20 +530,37 @@ See [validation results](docs/validation.md) for current validation information.
 
 Ops Center is currently under active development.
 
-Image builds, Python tests, the frontend build and Ansible syntax validation have been tested. The complete installer is still being validated across clean server deployments.
-
-The standard installer targets a **single Ops Center server**. An optional two-node deployment with a witness is provided in the [HA / cluster installation guide](docs/ha.md).
+The standard installer targets a **single Ops Center server**. The repository also contains an optional portable **two-node HA application/database deployment with an independent witness**.
 
 Before production use:
 
 - Test it in a lab environment.
-- Review the security configuration.
-- Back up persistent data.
+- Review the security configuration and HA network boundary.
+- Back up persistent data and private HA configuration.
 - Validate automation against non-critical systems first.
+- Test failover and restoration procedures in a disposable environment.
 
 ---
 
 ## 🗺️ Roadmap
+
+### Implemented
+
+- [x] Linux server operations
+- [x] Docker workload management
+- [x] Ansible automation
+- [x] Monitoring and observability stack
+- [x] Vulnerability scanning
+- [x] AI-assisted operations
+- [x] 2D / 3D Operations Floor
+- [x] PostgreSQL HA with Patroni + etcd
+- [x] Redis HA with Sentinel
+- [x] Two-node application topology with witness quorum
+- [x] Cluster status UI
+- [x] Administrative PostgreSQL switchover
+- [x] Portable HA configuration generator and Ansible preparation
+
+### Planned / evolving
 
 - [ ] Improved AI agent orchestration
 - [ ] More infrastructure agents
@@ -482,14 +569,12 @@ Before production use:
 - [ ] Improved container management
 - [ ] GPU infrastructure monitoring
 - [ ] Better Operations Floor visualization
-- [ ] Additional monitoring integrations
-- [ ] Additional security integrations
+- [ ] Dedicated HA monitoring / shared observability storage
 - [ ] More automation workflows
 - [ ] Role-based agent access
 - [ ] Multi-user improvements
-- [ ] Easier deployment
+- [ ] Easier deployment and upgrades
 - [ ] Prebuilt container releases
-- [ ] High-availability deployment options
 
 Ideas and contributions are welcome.
 
@@ -499,20 +584,9 @@ Ideas and contributions are welcome.
 
 Contributions, testing and feedback are welcome.
 
-You can help by:
+You can help by reporting bugs, testing installation and HA behavior on different Linux systems, suggesting features, improving documentation, creating integrations, adding automation, improving the frontend or submitting pull requests.
 
-- Reporting bugs
-- Testing installation on different Linux systems
-- Suggesting features
-- Improving documentation
-- Creating integrations
-- Adding automation
-- Improving the frontend
-- Submitting pull requests
-
-For installation problems, include the operating system, Docker/Compose versions and relevant **redacted** error output.
-
-Never include credentials, private hostnames, private IP addresses, SSH keys or other sensitive infrastructure information.
+For installation problems, include the operating system, Docker/Compose versions and relevant **redacted** error output. Never include credentials, private hostnames, inventories, SSH keys, HA runtime bundles or runtime data.
 
 ---
 
@@ -520,27 +594,25 @@ Never include credentials, private hostnames, private IP addresses, SSH keys or 
 
 Ops Center can execute infrastructure operations and should be treated as a **privileged management system**.
 
-Recommended practices:
-
 - Run it on dedicated infrastructure.
 - Restrict network access.
 - Use HTTPS.
-- Protect administrator credentials.
-- Restrict SSH keys.
+- Protect administrator credentials and SSH keys.
 - Use least privilege where possible.
-- Never expose runtime secrets publicly.
+- Never expose runtime or HA-generated secrets publicly.
 - Test automation before targeting production systems.
 - Keep the host and container images patched.
+- For HA, isolate cluster traffic and source-restrict etcd, PostgreSQL, Patroni, Redis and Sentinel ports.
 
-See [security guidance](docs/security.md).
+The reference HA topology intentionally does not add authentication to etcd/Sentinel or TLS to cross-host traffic, so those services must remain on an isolated trusted network unless you add stronger transport/security controls.
+
+See [security guidance](docs/security.md) and [HA network guidance](docs/ha.md).
 
 ---
 
 ## 📜 License
 
-Ops Center application code is distributed under the [MIT License](LICENSE).
-
-Third-party libraries, images and geographic data retain their respective licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Ops Center application code is distributed under the [MIT License](LICENSE). Third-party libraries, images and geographic data retain their respective licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
@@ -548,12 +620,8 @@ Third-party libraries, images and geographic data retain their respective licens
 
 If you find Ops Center interesting or useful, consider giving the repository a **star ⭐**.
 
-It helps other Linux, DevOps, self-hosting and infrastructure users discover the project.
-
-Contributions, ideas and feedback are very welcome.
+It helps other Linux, DevOps, self-hosting and infrastructure users discover the project. Contributions, ideas and feedback are very welcome.
 
 ---
 
-<p align="center">
-  <strong>Built for people who would rather manage infrastructure than manage ten different dashboards.</strong>
-</p>
+<p align="center"><strong>Built for people who would rather manage infrastructure than manage ten different dashboards.</strong></p>
