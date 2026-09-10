@@ -1,4 +1,6 @@
 # Ops Center
+<img width="1888" height="864" alt="image" src="https://github.com/user-attachments/assets/9335bef7-e456-41c4-9c38-03739fdb353b" />
+
 
 Ops Center is a self-hosted operations dashboard for Linux servers and Docker workloads. It combines inventory, monitoring, Ansible automation, patching, security findings and optional AI assistants in one web interface, including an interactive operations floor.
 
