@@ -17,7 +17,7 @@ class PatroniNodeStatus(BaseModel):
 class PostgresStatusRead(BaseModel):
     scope: str
     vip: str
-    vip_holder: str | None  # name of the node currently holding the VIP, inferred from Patroni's primary election (the vrrp_script ties the two together by construction)
+    vip_holder: str | None  # Primary member name; endpoint ownership is inferred, not independently probed.
     nodes: list[PatroniNodeStatus]
 
 

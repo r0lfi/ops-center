@@ -21,11 +21,16 @@ const ROLE_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = 
 };
 
 const ARCHITECTURE_REFERENCE: { component: string; detail: string; status?: "ok" | "warning" | "unknown" }[] = [
-  { component: "Deployment", detail: "The installer deploys one server. Patroni and Sentinel status requires an independently configured HA cluster.", status: "unknown" },
+  { component: "Deployment", detail: "Single-server installation or optional two-node HA deployment with a third witness. See docs/ha.md." },
+  { component: "PostgreSQL", detail: "Patroni manages primary/replica roles using a three-member etcd quorum. A local HAProxy routes each application node to the current primary." },
+  { component: "Redis", detail: "One primary and one replica; three Sentinels discover the leader with quorum 2. Sentinel state persists across restarts." },
+  { component: "Application tier", detail: "API, workers and frontend can run on both nodes. RedBeat uses a shared Redis lock for scheduling. Configure redundant external ingress separately." },
+  { component: "Persistent files", detail: "Provider keys, SSH credentials and editable playbooks must be synchronized securely between application nodes." },
+  { component: "Monitoring", detail: "The reference deployment keeps monitoring data local to each node. These stores are not replicated." },
 ];
 
 function PatroniNodeCard({ node, vip, vipHolder }: { node: PatroniNodeStatus; vip: string; vipHolder: string | null }) {
-  const holdsVip = node.name !== null && node.name === vipHolder;
+  const holdsVip = node.role === "primary" && node.name !== null && node.name === vipHolder;
 
   return (
     <Card>
@@ -61,9 +66,9 @@ function PatroniNodeCard({ node, vip, vipHolder }: { node: PatroniNodeStatus; vi
             <span>{node.timeline ?? "-"}</span>
           </div>
         )}
-        {holdsVip && (
+        {holdsVip && vip && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground">VIP</span>
+            <span className="text-muted-foreground">Database endpoint</span>
             <span className="font-mono">{vip}</span>
           </div>
         )}
@@ -136,6 +141,7 @@ export default function Cluster() {
   const { hasRole } = useAuth();
   const [status, setStatus] = useState<ClusterStatus | null>(null);
   const [switching, setSwitching] = useState(false);
+  const [switchMessage, setSwitchMessage] = useState<string | null>(null);
 
   useEffect(() => {
     function refresh() {
@@ -152,7 +158,10 @@ export default function Cluster() {
     if (!confirm(`Trigger a Postgres switchover away from "${leader?.name ?? "the current leader"}"?`)) return;
     setSwitching(true);
     try {
-      await api.cluster.switchover();
+      const result = await api.cluster.switchover();
+      setSwitchMessage(result.message);
+    } catch (error) {
+      setSwitchMessage(error instanceof Error ? error.message : "Switchover failed; check cluster status before retrying.");
     } finally {
       setSwitching(false);
     }
@@ -164,16 +173,18 @@ export default function Cluster() {
         <div>
           <h1 className="text-2xl font-semibold">Cluster</h1>
           <p className="text-sm text-muted-foreground">
-            Status for optional Patroni and Redis services. The standard installation runs on one server.
+            Live status for configured Patroni and Redis/Sentinel services. The HA deployment guide is in docs/ha.md.
           </p>
         </div>
         {hasRole("admin") && (
-          <Button variant="outline" onClick={handleSwitchover} disabled={switching || !status || status.postgres.nodes.length === 0}>
+          <Button variant="outline" onClick={handleSwitchover} disabled={switching || !status || !status.postgres.nodes.some((n) => n.reachable && n.role === "primary")}>
             <ArrowLeftRight className="h-4 w-4" />
             {switching ? "Switching over..." : "Trigger switchover"}
           </Button>
         )}
       </div>
+
+      {switchMessage && <p role="status" className="text-sm text-muted-foreground">{switchMessage}</p>}
 
       {!status && <p className="text-sm text-status-warning">Cluster status is unavailable right now.</p>}
 
@@ -183,6 +194,7 @@ export default function Cluster() {
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Postgres <span className="font-mono normal-case">({status.postgres.scope})</span>
             </h2>
+            {status.postgres.nodes.length === 0 && <p className="text-sm text-muted-foreground">Patroni is not configured. Standalone mode is available; use the HA guide to configure a cluster.</p>}
             <div className="grid gap-4 sm:grid-cols-2">
               {status.postgres.nodes.map((node) => (
                 <PatroniNodeCard

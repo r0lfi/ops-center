@@ -38,3 +38,7 @@ deploy/vars.yml
 ansible/inventory/hosts.yml
 .DS_Store
 *.swp
+
+# Generated HA topology and credentials (generate outside this repository).
+ha-runtime/
+ha-inventory.json

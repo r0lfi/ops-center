@@ -21,6 +21,7 @@ jobs:
     strategy:
       matrix:
         include:
+          - {image: postgres-ha, context: ha/postgres, file: ha/postgres/Dockerfile}
           - {image: api, context: backend, file: backend/Dockerfile}
           - {image: frontend, context: frontend, file: frontend/Dockerfile}
           - {image: worker, context: '.', file: worker/Dockerfile}

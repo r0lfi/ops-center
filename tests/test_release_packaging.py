@@ -39,3 +39,11 @@ def test_environment_injection_is_rejected(tmp_path):
         with pytest.raises(ValueError):
             generator.create_env(tmp_path/'env', {'TZ':unsafe})
         assert not (tmp_path/'env').exists()
+
+
+def test_generated_ha_data_and_external_screenshots_are_rejected():
+    checker = module('check-release')
+    assert checker.check_file('ha-runtime/node-1/patroni.yml', b'config')
+    assert checker.check_file('ha-inventory.json', b'{}')
+    url = 'https://github.com/' + 'user-attachments/assets/example'
+    assert checker.check_file('README.md', url.encode())

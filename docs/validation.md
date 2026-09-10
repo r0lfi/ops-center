@@ -14,4 +14,30 @@ Validation performed on 2026-09-09:
 
 The system-changing Ansible installation has not been run against a fresh AlmaLinux/RHEL VM. Successful image builds and syntax checks do not establish full deployment compatibility, SELinux behavior, recovery correctness or external integration compatibility. Validate a fresh installation on a disposable dedicated server before relying on it for production operations.
 
-Optional integrations were not exercised against real external accounts or equipment. No source code or image has been published as part of this validation. This is release preparation, not a comprehensive security audit.
+Optional integrations were not exercised against real external accounts or equipment. These checks are not a comprehensive security audit.
+
+
+## HA update — 2026-09-10
+
+- All 112 Python tests passed, including generated-topology consistency, private
+  file modes, overwrite rejection, Sentinel parsing, candidate validation, and
+  viewer/operator denial before a Patroni administrative request.
+- TypeScript/Vite production build passed; the existing large-chunk warning remains.
+- All five generated Compose documents (two data/app pairs and a witness) passed
+  Compose configuration validation. The HA preparation playbook passed Ansible
+  syntax validation.
+- The PostgreSQL 17/Patroni image built successfully. An isolated rootless Podman
+  test started two database nodes and three etcd/Sentinel voters. It verified
+  primary/replica initialization, authenticated PostgreSQL switchover, agreement
+  of all three Sentinels after Redis-primary loss, and a PostgreSQL connection
+  through the generated HAProxy configuration to a writable primary. The test
+  pods were stopped after verification.
+- Release-file policy and Gitleaks 8.24.3 scans of the public file set and Git
+  history passed. A separate scan found no known source-environment host/domain
+  markers or private-network literals in the release files.
+
+The HA runtime test used isolated containers on one development host, not three
+independent machines. It does not validate physical host loss, network partitions,
+firewall policy, external HTTPS ingress, shared-file synchronization, or the full
+Ansible installation on clean servers. Follow the failover checklist in
+[the HA guide](ha.md) before deployment.

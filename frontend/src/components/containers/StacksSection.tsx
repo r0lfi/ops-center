@@ -307,7 +307,7 @@ export function StacksSection({ hostname }: { hostname: string }) {
                 ) : (
                   <span className="font-medium">{stack.name}</span>
                 )}
-                {!stack.managed && <Badge variant="unknown">Not managed Infrastructure management</Badge>}
+                {!stack.managed && <Badge variant="unknown">Not managed by Ops Center</Badge>}
               </div>
               <p className="text-xs text-muted-foreground">
                 {stack.running_count}/{stack.container_count} running

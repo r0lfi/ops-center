@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import { Layout } from "@/components/layout/Layout";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import AIAgentLogs from "@/pages/AIAgentLogs";
+import AIDocumentation from "@/pages/AIDocumentation";
 import AIAgentsList from "@/pages/AIAgentsList";
 import AIApprovals from "@/pages/AIApprovals";
 import AIMemory from "@/pages/AIMemory";
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="automation" element={<Automation />} />
           <Route path="automation/playbooks" element={<PlaybookLibrary />} />
           <Route path="ai-agents" element={<AIDashboard />} />
+          <Route path="ai-agents/documentation" element={<AIDocumentation />} />
           <Route path="ai-agents/chat" element={<AIChat />} />
           <Route path="ai-agents/memory" element={<AIMemory />} />
           <Route path="ai-agents/agents" element={<AIAgentsList />} />

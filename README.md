@@ -3,10 +3,6 @@
 ### Self-hosted AI-assisted operations platform for Linux, containers, automation, monitoring and security.
 
 <p align="center">
-  <img width="1888" height="864" alt="Ops Center Operations Floor" src="https://github.com/user-attachments/assets/9335bef7-e456-41c4-9c38-03739fdb353b" />
-</p>
-
-<p align="center">
   <strong>Linux • Docker • Ansible • Monitoring • Security • Automation • AI Agents</strong>
 </p>
 
@@ -291,6 +287,26 @@ Do not place passwords in command-line `-e` strings or commit private inventory/
 
 ---
 
+## HA / cluster installation
+
+The public release now includes a configurable two-node application/database
+cluster with a third witness, PostgreSQL/Patroni + etcd, Redis/Sentinel, and local
+HAProxy database routing. The Cluster page displays the configured members and
+allows administrators to request PostgreSQL switchover.
+
+Follow **[the HA installation and failover guide](docs/ha.md)** for requirements,
+private inventory generation, the `deploy/ha.yml` Ansible preparation playbook,
+startup order, backups and tests. The regular installer remains single-server.
+HA configuration is generated with fresh secrets outside the repository; no
+existing installation data is included. Redundant ingress, secure file
+synchronization and HA monitoring require additional configuration as described
+in the guide.
+
+The AI menu also includes searchable technical documentation explaining agents,
+tools, approval handling, memory and the application runtime.
+
+---
+
 ## 🐳 Container Images
 
 Ops Center builds five custom application images:
@@ -302,6 +318,9 @@ Ops Center builds five custom application images:
 | `worker` | Ansible execution and scheduler |
 | `ai-worker` | Optional AI agent execution |
 | `security-worker` | Security scanning and Docker operations |
+
+The image helper and GitHub image workflow also build `postgres-ha`, the optional
+PostgreSQL 17/Patroni image used by the [HA deployment](docs/ha.md).
 
 The repository contains source code and Dockerfiles rather than prebuilt image archives. Building during installation is the default.
 
@@ -443,7 +462,7 @@ Ops Center is currently under active development.
 
 Image builds, Python tests, the frontend build and Ansible syntax validation have been tested. The complete installer is still being validated across clean server deployments.
 
-The current deployment architecture targets a **single Ops Center server** and does not currently provision a highly available Patroni/Sentinel cluster.
+The standard installer targets a **single Ops Center server**. An optional two-node deployment with a witness is provided in the [HA / cluster installation guide](docs/ha.md).
 
 Before production use:
 

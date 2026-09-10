@@ -64,6 +64,7 @@ const NAV_ITEMS_AFTER_AI: NavItem[] = [
 ];
 
 const AI_AGENTS_SUB_ITEMS: NavItem[] = [
+  { label: "Documentation", to: "/ai-agents/documentation", icon: FileText },
   { label: "History & memory", to: "/ai-agents/memory", icon: FileText },
   { label: "Dashboard", to: "/ai-agents", icon: LayoutDashboard },
   { label: "Agents", to: "/ai-agents/agents", icon: Users },

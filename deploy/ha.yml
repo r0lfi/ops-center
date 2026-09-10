@@ -1,0 +1,108 @@
+---
+# Fresh hosts only. This prepares files; startup order and verification are
+# explicit in docs/ha.md to avoid racing database initialization/migrations.
+- name: Prepare a fresh Ops Center HA cluster
+  hosts: ops_ha
+  become: true
+  gather_facts: false
+  vars:
+    ops_install_dir: /opt/ops-center
+    ops_data_root: /var/lib/ops-center
+  pre_tasks:
+    - name: Require controller-side sanitized source archive and private generated bundle
+      ansible.builtin.assert:
+        that:
+          - ops_release_archive is defined
+          - ops_ha_bundle is defined
+          - ops_install_dir is match('^/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)+$')
+          - ops_data_root is match('^/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)+$')
+          - inventory_hostname is match('^[a-z][a-z0-9-]{0,31}$')
+    - name: Verify Docker Compose is already installed
+      ansible.builtin.command: docker compose version
+      changed_when: false
+    - name: Check for existing runtime configuration
+      ansible.builtin.stat:
+        path: "{{ ops_install_dir }}/ha-runtime"
+      register: ops_existing_ha
+    - name: Refuse replacing existing cluster configuration
+      ansible.builtin.assert:
+        that: not ops_existing_ha.stat.exists
+        fail_msg: This playbook only prepares fresh hosts. Use the documented upgrade procedure for an existing cluster.
+  tasks:
+    - name: Create source directory
+      ansible.builtin.file:
+        path: "{{ ops_install_dir }}"
+        state: directory
+        mode: '0755'
+    - name: Extract reviewed public source
+      ansible.builtin.unarchive:
+        src: "{{ ops_release_archive }}"
+        dest: "{{ ops_install_dir }}"
+        owner: root
+        group: root
+    - name: Install only this node's private runtime files
+      ansible.builtin.copy:
+        src: "{{ ops_ha_bundle }}/{{ inventory_hostname }}/"
+        dest: "{{ ops_install_dir }}/ha-runtime/"
+        owner: root
+        group: root
+        mode: '0600'
+        directory_mode: '0700'
+      no_log: true
+    - name: Prepare application storage
+      when: inventory_hostname in groups.get('ops_ha_apps', [])
+      block:
+        - name: Inspect Docker socket group
+          ansible.builtin.stat:
+            path: /var/run/docker.sock
+          register: ops_socket
+        - name: Require local Docker Engine socket
+          ansible.builtin.assert:
+            that: ops_socket.stat.exists
+        - name: Configure socket access group without displaying environment
+          ansible.builtin.lineinfile:
+            path: "{{ ops_install_dir }}/ha-runtime/.env"
+            regexp: '^DOCKER_GID='
+            line: "DOCKER_GID={{ ops_socket.stat.gid }}"
+          no_log: true
+        - name: Create local application storage
+          ansible.builtin.file:
+            path: "{{ ops_data_root }}/{{ item.path }}"
+            state: directory
+            owner: "{{ item.uid }}"
+            group: "{{ item.uid }}"
+            mode: "{{ item.mode | default('0750') }}"
+          loop:
+            - {path: '', uid: 0, mode: '0711'}
+            - {path: secrets, uid: 1000}
+            - {path: secrets/ai-providers, uid: 1000, mode: '0700'}
+            - {path: secrets/integrations, uid: 1000, mode: '0700'}
+            - {path: prometheus, uid: 65534, mode: '0755'}
+            - {path: prometheus/file_sd, uid: 1000, mode: '0755'}
+            - {path: prometheus/data, uid: 65534}
+            - {path: alertmanager, uid: 65534}
+            - {path: grafana, uid: 472}
+            - {path: loki, uid: 10001}
+            - {path: trivy, uid: 0}
+            - {path: geoip, uid: 1000, mode: '0755'}
+            - {path: docker-stacks, uid: 1000}
+        - name: Initialize empty monitoring inventory
+          ansible.builtin.copy:
+            content: '[]'
+            dest: "{{ ops_data_root }}/prometheus/file_sd/node_exporters.json"
+            owner: '1000'
+            group: '1000'
+            mode: '0644'
+            force: false
+        - name: Let the API edit the bundled playbooks
+          ansible.builtin.file:
+            path: "{{ ops_install_dir }}/ansible/playbooks"
+            owner: '1000'
+            group: '1000'
+            recurse: true
+    - name: Validate infrastructure without exposing interpolated credentials
+      ansible.builtin.command:
+        argv: [docker, compose, -f, compose.ha.yml, config, --quiet]
+        chdir: "{{ ops_install_dir }}/ha-runtime"
+      changed_when: false
+      no_log: true

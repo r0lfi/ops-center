@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE_DIRS = {'secrets', 'data', 'backups', 'artifacts', '.venv', '.venv-installer', 'node_modules', '__pycache__', '.pytest_cache'}
+PRIVATE_DIRS = {'ha-runtime', 'secrets', 'data', 'backups', 'artifacts', '.venv', '.venv-installer', 'node_modules', '__pycache__', '.pytest_cache'}
 PRIVATE_EXTENSIONS = {'.pem', '.key', '.p12', '.pfx', '.db', '.sqlite', '.sqlite3', '.dump', '.zip', '.tar', '.gz'}
 
 def check_file(name, data):
@@ -22,7 +22,7 @@ def check_file(name, data):
         issues.append('environment file')
     if p.suffix in PRIVATE_EXTENSIONS or p.name.startswith(('id_rsa', 'id_ed25519')):
         issues.append('credential/data/archive file')
-    if name in ('deploy/inventory.ini', 'deploy/vars.yml', 'ansible/inventory/hosts.yml'):
+    if name in ('deploy/inventory.ini', 'deploy/vars.yml', 'ansible/inventory/hosts.yml', 'ha-inventory.json', 'ha-hosts.ini'):
         issues.append('private installation configuration')
     try:
         text = data.decode('utf-8')
@@ -33,6 +33,8 @@ def check_file(name, data):
     # Public examples should use RFC 5737 documentation ranges, not real LANs.
     if re.search(r'\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b', text):
         issues.append('private-network address; replace with a configurable value/documentation example')
+    if re.search(r'https://github[.]com/user-attachments/', text):
+        issues.append('unreviewed external screenshot; use reviewed synthetic public artwork')
     return issues
 
 def main():

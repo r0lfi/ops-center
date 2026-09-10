@@ -24,6 +24,8 @@ jobs:
       - run: pytest tests/ -q
       - name: Validate installer syntax
         run: ansible-playbook --syntax-check -i deploy/inventory.example.ini deploy/install.yml -e ops_admin_username=test -e ops_admin_password=validation-only-password -e ops_release_archive=/tmp/unused.tar.gz
+      - name: Validate HA installer syntax
+        run: ansible-playbook --syntax-check -i deploy/inventory.example.ini deploy/ha.yml
   frontend:
     runs-on: ubuntu-latest
     steps:
