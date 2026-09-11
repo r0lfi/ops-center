@@ -4,6 +4,7 @@
 This complements Gitleaks; it is not a substitute for a secret scanner or review.
 Untracked local runtime files are not release inputs and are never packaged.
 """
+import hashlib
 import re
 import subprocess
 import sys
@@ -12,6 +13,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRIVATE_DIRS = {'ha-runtime', 'secrets', 'data', 'backups', 'artifacts', '.venv', '.venv-installer', 'node_modules', '__pycache__', '.pytest_cache'}
 PRIVATE_EXTENSIONS = {'.pem', '.key', '.p12', '.pfx', '.db', '.sqlite', '.sqlite3', '.dump', '.zip', '.tar', '.gz'}
+
+# Visually reviewed public artwork. Pin bytes so replacements require a new review.
+REVIEWED_ARTWORK = {
+    "docs/images/ops-floor.gif": "3662d8036bbaba70e95627baa4adf634df4d56e291a251ec02951084d6695385",
+}
 
 def check_file(name, data):
     p = Path(name)
@@ -24,6 +30,10 @@ def check_file(name, data):
         issues.append('credential/data/archive file')
     if name in ('deploy/inventory.ini', 'deploy/vars.yml', 'ansible/inventory/hosts.yml', 'ha-inventory.json', 'ha-hosts.ini'):
         issues.append('private installation configuration')
+    if name in REVIEWED_ARTWORK:
+        if hashlib.sha256(data).hexdigest() != REVIEWED_ARTWORK[name]:
+            issues.append("reviewed artwork changed; visual review required")
+        return issues
     try:
         text = data.decode('utf-8')
     except UnicodeDecodeError:

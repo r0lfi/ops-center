@@ -20,6 +20,8 @@
 
 ## What is Ops Center?
 
+![Ops Center — 3D Operations Floor overview](docs/images/ops-floor.gif)
+
 **Ops Center** is an open-source, self-hosted operations platform that brings infrastructure management, automation, observability, security and AI-assisted operations into one interface.
 
 Instead of constantly switching between monitoring dashboards, Ansible, vulnerability scanners, Docker tools, SSH sessions and AI assistants, Ops Center brings them together into a single operations environment.

@@ -47,3 +47,12 @@ def test_generated_ha_data_and_external_screenshots_are_rejected():
     assert checker.check_file('ha-inventory.json', b'{}')
     url = 'https://github.com/' + 'user-attachments/assets/example'
     assert checker.check_file('README.md', url.encode())
+
+
+def test_reviewed_artwork_is_pinned_to_exact_path_and_bytes():
+    checker = module('check-release')
+    name = 'docs/images/ops-floor.gif'
+    data = (ROOT / name).read_bytes()
+    assert not checker.check_file(name, data)
+    assert checker.check_file(name, data + b'changed')
+    assert checker.check_file('docs/images/other.gif', data)
