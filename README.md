@@ -3,10 +3,6 @@
 ### Self-hosted AI-assisted operations platform for Linux, containers, automation, monitoring, security and high availability.
 
 <p align="center">
-  <img width="1888" height="864" alt="Ops Center Operations Floor" src="https://github.com/user-attachments/assets/9335bef7-e456-41c4-9c38-03739fdb353b" />
-</p>
-
-<p align="center">
   <strong>Linux • Docker • Ansible • Monitoring • Security • HA • Automation • AI Agents</strong>
 </p>
 
