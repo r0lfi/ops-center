@@ -23,3 +23,8 @@
 deploy/inventory.ini
 deploy/vars.yml
 ansible/inventory/hosts.yml
+
+**/.test-env
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo

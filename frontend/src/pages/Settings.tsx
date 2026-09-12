@@ -17,6 +17,8 @@ import { Select } from "@/components/ui/select";
 import { api, type AuditLogEntry, type Credential, type Role, type User } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
+import { TrafficSettingsPanel } from "@/components/settings/TrafficSettingsPanel";
+
 const ROLES: Role[] = ["viewer", "operator", "admin"];
 const CREDENTIAL_TYPES = ["ssh_key", "ssh_password"];
 
@@ -68,7 +70,7 @@ function CreateCredentialDialog({ onCreated }: { onCreated: () => void }) {
         <form className="space-y-4" onSubmit={handleSubmit}>
           <p className="text-xs text-muted-foreground">
             The private key/password file must already exist on the host under{" "}
-            <code>/data/ops-center/secrets/credentials/</code> - place it there first (e.g. with{" "}
+            <code>DATA_ROOT/secrets/credentials/</code> - place it there first (e.g. with{" "}
             <code>scripts/credentials/generate-ssh-key.sh</code>), then reference just its filename here. Raw key
             material is never accepted over this form.
           </p>
@@ -494,6 +496,7 @@ export default function Settings() {
 
       {hasRole("admin") ? (
         <>
+          <TrafficSettingsPanel />
           <UserManagement />
           <CredentialManagement />
           <AuditLog />
@@ -501,7 +504,7 @@ export default function Settings() {
       ) : (
         <Card>
           <CardContent className="py-6 text-sm text-muted-foreground">
-            User management and the audit log are only visible to administrators.
+            Traffic configuration, user management and the audit log are only visible to administrators.
           </CardContent>
         </Card>
       )}

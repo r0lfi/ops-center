@@ -23,7 +23,9 @@ _MAX_MESSAGE = 6000
 
 def post_message(backend: str, token: str, message: str, reply_to: str | None = None) -> None:
     secret = read_secret(TALK_BOT_SECRET_PATH)
-    backend = TALK_BACKEND_URL or backend
+    backend = TALK_BACKEND_URL
+    if not backend.startswith("https://"):
+        raise ValueError("Trusted HTTPS Talk backend is not configured")
     message = message.strip()[:_MAX_MESSAGE] or "(no answer)"
     random_value = secrets.token_hex(32)
     signature = hmac.new(secret.encode(), random_value.encode() + message.encode(), hashlib.sha256).hexdigest()
@@ -43,3 +45,5 @@ def post_message(backend: str, token: str, message: str, reply_to: str | None = 
             },
         )
         resp.raise_for_status()
+        if resp.json().get("ocs", {}).get("meta", {}).get("status") != "ok":
+            raise RuntimeError("Talk did not acknowledge message")

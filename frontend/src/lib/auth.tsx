@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { api, getToken, setToken, setUnauthorizedHandler, type Role, type User } from "@/lib/api";
+import { api, ApiError, getToken, renewSession, setToken, setUnauthorizedHandler, type Role, type User } from "@/lib/api";
 
 interface AuthContextValue {
   user: User | null;
@@ -29,16 +29,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [logout]);
 
   useEffect(() => {
-    if (!getToken()) {
-      setLoading(false);
-      return;
-    }
-    api
-      .auth.me()
-      .then(setUser)
-      .catch(() => setToken(null))
-      .finally(() => setLoading(false));
-  }, []);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const load = async () => {
+      const token = getToken();
+      if (!token) { if (!stopped) setLoading(false); return; }
+      try {
+        const me = await api.auth.me();
+        if (!stopped && getToken()) { setUser(me); setLoading(false); }
+      } catch (error) {
+        if (stopped) return;
+        if (error instanceof ApiError && error.status === 401) {
+          if (getToken() === token || !getToken()) { logout(); setLoading(false); return; }
+        }
+        // Retry temporary backend/network failures without deleting the saved login.
+        timer = setTimeout(() => void load(), 5000);
+      }
+    };
+    void load();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [logout]);
+
+  useEffect(() => {
+    if (!user) return;
+    const keepAlive = () => {
+      if (navigator.onLine) void renewSession().catch(() => { /* Retry next tick; 401 is handled centrally. */ });
+    };
+    const changed = (event: StorageEvent) => {
+      if (event.key === "ops_center_token" && !event.newValue) logout();
+    };
+    const timer = window.setInterval(keepAlive, 60000);
+    window.addEventListener("online", keepAlive);
+    document.addEventListener("visibilitychange", keepAlive);
+    window.addEventListener("storage", changed);
+    keepAlive();
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", keepAlive);
+      document.removeEventListener("visibilitychange", keepAlive);
+      window.removeEventListener("storage", changed);
+    };
+  }, [user, logout]);
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await api.auth.login(username, password);
@@ -61,4 +92,20 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+
+// Read-only streaming connections must reconnect using the renewed token.
+export function useSessionToken(): string | null {
+  const [token, update] = useState(getToken);
+  useEffect(() => {
+    const changed = () => update(getToken());
+    window.addEventListener("ops-session-changed", changed);
+    window.addEventListener("storage", changed);
+    return () => {
+      window.removeEventListener("ops-session-changed", changed);
+      window.removeEventListener("storage", changed);
+    };
+  }, []);
+  return token;
 }

@@ -83,6 +83,8 @@ services:
       OPS_CENTER_ENV: ${OPS_CENTER_ENV:-production}
       API_SECRET_KEY: ${API_SECRET_KEY:?Run the installer to generate API_SECRET_KEY}
       TALK_MEMORY_BINDINGS: ${TALK_MEMORY_BINDINGS:-[]}
+      TALK_BACKEND_URL: ${TALK_BACKEND_URL:-}
+      TALK_NOTIFICATIONS_ENABLED: ${TALK_NOTIFICATIONS_ENABLED:-false}
       API_LOG_LEVEL: ${API_LOG_LEVEL:-info}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
@@ -97,8 +99,10 @@ services:
       PROMETHEUS_SD_PATH: /app/prometheus-sd/node_exporters.json
       ANSIBLE_PLAYBOOKS_DIR: /app/ansible/playbooks
       GEOIP_DB_PATH: /app/geoip/dbip-city-lite.mmdb
+      LOKI_URL: ${LOKI_HEALTH_URL:-http://loki:3100/ready}
       PATRONI_NODES: ${PATRONI_NODES:-}
-      PATRONI_RESTAPI_USERNAME: patroni_admin
+      PATRONI_REST_PORT: ${PATRONI_REST_PORT:-8008}
+      PATRONI_RESTAPI_USERNAME: ${PATRONI_RESTAPI_USERNAME:-patroni_admin}
       PATRONI_RESTAPI_PASSWORD: ${PATRONI_RESTAPI_PASSWORD:-}
       POSTGRES_VIP: ${POSTGRES_VIP:-}
       REDIS_NODES: ${REDIS_NODES:-redis}
@@ -107,11 +111,8 @@ services:
       CAMERAS: ${CAMERAS:-[]}
       STREAMED_CAMERAS: ${STREAMED_CAMERAS:-[]}
       GO2RTC_URL: ${GO2RTC_URL:-}
-      WG_EASY_URL: ${WG_EASY_URL:-}
-      TRAFFIC_CADDY_HOST: ${TRAFFIC_CADDY_HOST:-}
-      TRAFFIC_NPM_HOST: ${TRAFFIC_NPM_HOST:-}
-      TRAFFIC_CADDY_LOG: ${TRAFFIC_CADDY_LOG:-/var/log/caddy/access.log}
-      TRAFFIC_NPM_LOG_DIR: ${TRAFFIC_NPM_LOG_DIR:-/var/log/nginx-proxy-manager}
+      WIREGUARD_URL: ${WIREGUARD_URL:-}
+      WIREGUARD_PASSWORD_PATH: ${WIREGUARD_PASSWORD_PATH:-integrations/wireguard-admin-password}
     volumes:
     - ${DATA_ROOT:-/data/ops-center}/secrets:/app/secrets:ro,z
     - ${DATA_ROOT:-/data/ops-center}/secrets/ai-providers:/app/secrets/ai-providers:z
@@ -323,6 +324,8 @@ services:
       REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-ops-center-redis}
       SECRETS_ROOT: /app/secrets
       TALK_BACKEND_URL: ${TALK_BACKEND_URL:-}
+      LOKI_URL: ${LOKI_API_URL:-http://loki:3100}
+      PROMETHEUS_URL: ${PROMETHEUS_API_URL:-http://prometheus:9090}
       TZ: ${TZ:-UTC}
       OPS_LOCAL_HOSTNAME: ${OPS_LOCAL_HOSTNAME:-ops-host}
     volumes:

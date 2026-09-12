@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -8,6 +10,7 @@ from app.api.deps import get_current_user
 from app.api.routes import (
     ai,
     ai_memory,
+    ai_collaboration,
     alerts,
     ansible_playbooks,
     app_catalog,
@@ -37,7 +40,7 @@ from app.db.session import async_session_factory
 from app.middleware.audit import AuditLogMiddleware
 from app.models.host import Host
 from app.services.prometheus_sd import write_node_exporter_targets
-from app.services.traffic_watch import start_traffic_watch
+from app.services.traffic_watch import start_traffic_watch, stop_traffic_watch
 
 settings = get_settings()
 
@@ -50,7 +53,15 @@ async def lifespan(_: FastAPI):
         result = await db.execute(select(Host))
         write_node_exporter_targets(list(result.scalars().all()))
     await start_traffic_watch()
-    yield
+    from app.services.talk_watch import watch_loop
+    talk_watch = asyncio.create_task(watch_loop())
+    try:
+        yield
+    finally:
+        await stop_traffic_watch()
+        talk_watch.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await talk_watch
 
 
 app = FastAPI(
@@ -117,8 +128,12 @@ app.include_router(traffic.router, prefix="/api", tags=["traffic"], dependencies
 # header). Auth for this one route is fully manual inside the handler via
 # a `token` query param.
 app.include_router(ai.stream_router, prefix="/api", tags=["ai"])
+app.include_router(ai_collaboration.router, prefix="/api", tags=["ai-collaboration"], dependencies=_AUTH)
 app.include_router(ai_memory.router, prefix="/api", tags=["ai-memory"], dependencies=_AUTH)
 app.include_router(ai.router, prefix="/api", tags=["ai"], dependencies=_AUTH)
 # No dependencies=_AUTH: Nextcloud signs each webhook with the bot's shared
 # secret and the handler verifies that itself - see the module docstring.
 app.include_router(integrations.router, prefix="/api", tags=["integrations"])
+
+from app.api.routes import traffic_settings
+app.include_router(traffic_settings.router, prefix="/api", tags=["settings"], dependencies=_AUTH)

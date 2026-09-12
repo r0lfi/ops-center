@@ -10,6 +10,7 @@ import AIMemory from "@/pages/AIMemory";
 import AIChat from "@/pages/AIChat";
 import AIDashboard from "@/pages/AIDashboard";
 import AISettings from "@/pages/AISettings";
+import AICollaboration from "@/pages/AICollaboration";
 import AITasks from "@/pages/AITasks";
 import Alerts from "@/pages/Alerts";
 import AppCatalog from "@/pages/AppCatalog";
@@ -40,6 +41,7 @@ import Services from "@/pages/Services";
 import SettingsPage from "@/pages/Settings";
 import StackDetail from "@/pages/StackDetail";
 import TrafficMapPage from "@/pages/TrafficMapPage";
+import TrafficMapWallboard from "@/pages/TrafficMapWallboard";
 import Vpn from "@/pages/Vpn";
 import Vulnerabilities from "@/pages/Vulnerabilities";
 import Wallboard from "@/pages/Wallboard";
@@ -52,6 +54,7 @@ export default function App() {
         {/* No sidebar/chrome - meant to be opened fullscreen on a wall-mounted monitor */}
         <Route path="wallboard" element={<Wallboard />} />
         <Route path="cameras/wallboard" element={<CameraWallboard />} />
+        <Route path="traffic-map/wallboard" element={<TrafficMapWallboard />} />
         <Route element={<Layout />}>
           <Route index element={<Overview />} />
           <Route path="servers" element={<Servers />} />
@@ -77,6 +80,8 @@ export default function App() {
           <Route path="ai-agents/tasks" element={<AITasks />} />
           <Route path="ai-agents/approvals" element={<AIApprovals />} />
           <Route path="ai-agents/agent-logs" element={<AIAgentLogs />} />
+          <Route path="ai-agents/collaboration" element={<AICollaboration />} />
+          <Route path="ai-agents/collaboration/settings" element={<AICollaboration settingsOnly />} />
           <Route path="ai-agents/settings" element={<AISettings />} />
           <Route path="containers" element={<Containers />} />
           <Route path="containers/all" element={<AllContainers />} />

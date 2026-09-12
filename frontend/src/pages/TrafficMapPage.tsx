@@ -1,21 +1,21 @@
 import { LayoutGrid } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { TrafficMap } from "@/components/traffic/TrafficMap";
 import { Button } from "@/components/ui/button";
 
 export default function TrafficMapPage() {
+  const { search } = useLocation();
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Traffic Map</h1>
           <p className="text-sm text-muted-foreground">
-            Live requests hitting edge-host and home (Nginx Proxy Manager), geolocated from real access
-            logs - external clients only, LAN traffic is filtered out.
+            External web traffic and authenticated VPN handshakes. Explore saved observations across your services.
           </p>
         </div>
-        <Link to="/wallboard">
+        <Link to={{ pathname: "/traffic-map/wallboard", search }}>
           <Button variant="outline">
             <LayoutGrid className="mr-1.5 h-4 w-4" />
             Open Wallboard

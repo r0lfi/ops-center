@@ -1,0 +1,190 @@
+---
+# One approved job, one stable request ID, one guest. The Proxmox node is a
+# delegated inventory host with its existing managed SSH credential.
+- name: Expand one mounted LVM filesystem and its Proxmox backing disk if needed
+  hosts: "{{ disk_target_host | default('disk_expansion_target') }}"
+  become: true
+  gather_facts: false
+  serial: 1
+
+  vars:
+    disk_mount: /data
+    disk_add_gib: 50
+    disk_execute: false
+
+  pre_tasks:
+    - name: Validate bounded disk expansion request
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - disk_target_host is defined
+          - inventory_hostname == disk_target_host
+          - disk_request_id is defined
+          - disk_request_id is string
+          - disk_request_id is match('^[a-zA-Z0-9][a-zA-Z0-9_-]{7,79}$')
+          - disk_mount is string
+          - disk_mount is match('^/(?:[a-zA-Z0-9._-]+(?:/[a-zA-Z0-9._-]+)*)?$')
+          - disk_add_gib is integer
+          - disk_add_gib >= 1
+          - disk_add_gib <= 1024
+          - disk_execute is boolean
+        fail_msg: A single managed guest, stable request ID, exact mount and integer growth in GiB are required.
+
+    - name: Build immutable request input
+      ansible.builtin.set_fact:
+        disk_request:
+          request_id: "{{ disk_request_id }}"
+          mount: "{{ disk_mount }}"
+          add_gib: "{{ disk_add_gib }}"
+          execute: "{{ disk_execute and not ansible_check_mode }}"
+
+  tasks:
+    - name: Run the complete disk growth workflow
+      block:
+        - name: Create private guest helper directory
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: ops-disk-expand-
+          register: disk_guest_temp
+          check_mode: false
+
+        - name: Install reviewed helper on guest
+          ansible.builtin.copy:
+            src: files/disk_expand.py
+            dest: "{{ disk_guest_temp.path }}/disk_expand.py"
+            mode: "0700"
+          check_mode: false
+
+        - name: Discover exact guest layout and calculate absolute targets
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ disk_guest_temp.path }}/disk_expand.py"
+              - guest-plan
+            stdin: "{{ disk_request | to_json }}"
+          register: disk_guest_plan_command
+          changed_when: false
+          check_mode: false
+
+        - name: Read the guest plan
+          ansible.builtin.set_fact:
+            disk_guest_plan: "{{ disk_guest_plan_command.stdout | from_json }}"
+
+        - name: Require an existing managed Proxmox delegate when backing capacity is needed
+          ansible.builtin.assert:
+            that:
+              - disk_proxmox_host is defined
+              - disk_proxmox_host | default('') in hostvars
+              - disk_proxmox_host | default('') != inventory_hostname
+              - disk_proxmox_vmid is defined
+              - disk_proxmox_vmid is integer
+              - disk_proxmox_vmid >= 100
+              - disk_proxmox_vmid <= 999999999
+            fail_msg: The VG needs more backing capacity. Supply the verified VM ID and managed Proxmox host.
+          when: disk_guest_plan.needs_proxmox and not disk_guest_plan.completed
+
+        - name: Create private Proxmox helper directory
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: ops-disk-expand-
+          register: disk_pve_temp
+          delegate_to: "{{ disk_proxmox_host | default(inventory_hostname) }}"
+          when: disk_guest_plan.needs_proxmox and not disk_guest_plan.completed
+          check_mode: false
+
+        - name: Install reviewed helper on Proxmox
+          ansible.builtin.copy:
+            src: files/disk_expand.py
+            dest: "{{ disk_pve_temp.path }}/disk_expand.py"
+            mode: "0700"
+          delegate_to: "{{ disk_proxmox_host | default(inventory_hostname) }}"
+          when: disk_guest_plan.needs_proxmox and not disk_guest_plan.completed
+          check_mode: false
+
+        - name: Verify VM disk identity, snapshots and available physical storage
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ disk_pve_temp.path }}/disk_expand.py"
+              - pve-plan
+            stdin: >-
+              {{ {'guest_plan': disk_guest_plan, 'vmid': disk_proxmox_vmid,
+                  'execute': disk_request.execute} | to_json }}
+          register: disk_pve_plan_command
+          delegate_to: "{{ disk_proxmox_host | default(inventory_hostname) }}"
+          changed_when: false
+          when: disk_guest_plan.needs_proxmox and not disk_guest_plan.completed
+          check_mode: false
+
+        - name: Grow the verified Proxmox disk to its journaled absolute target
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ disk_pve_temp.path }}/disk_expand.py"
+              - pve-apply
+            stdin: >-
+              {{ {'guest_plan': disk_guest_plan, 'vmid': disk_proxmox_vmid,
+                  'execute': true} | to_json }}
+          register: disk_pve_apply_command
+          delegate_to: "{{ disk_proxmox_host | default(inventory_hostname) }}"
+          changed_when: disk_pve_apply_command.rc == 0 and ((disk_pve_apply_command.stdout | from_json).changed | default(false))
+          when:
+            - disk_guest_plan.needs_proxmox and not disk_guest_plan.completed
+            - disk_request.execute
+
+        - name: Grow the guest partition, PV, LV and filesystem and verify capacity
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ disk_guest_temp.path }}/disk_expand.py"
+              - guest-apply
+            stdin: "{{ disk_request | to_json }}"
+          register: disk_guest_apply_command
+          changed_when: disk_guest_apply_command.rc == 0 and ((disk_guest_apply_command.stdout | from_json).changed | default(false))
+          when: disk_request.execute
+
+        - name: Emit structured query result
+          ansible.builtin.debug:
+            msg: >-
+              OPS_CENTER_QUERY_RESULT:{{ {
+                'available': true,
+                'mode': 'apply' if disk_request.execute else 'plan',
+                'disk_expansion': (disk_guest_apply_command.stdout | from_json)
+                  if disk_request.execute else disk_guest_plan,
+                'proxmox': ((disk_pve_apply_command.stdout | from_json) if disk_request.execute
+                  else (disk_pve_plan_command.stdout | from_json))
+                  if disk_guest_plan.needs_proxmox and not disk_guest_plan.completed else none
+              } | to_json }}
+
+      rescue:
+        - name: Preserve the concrete disk preflight or growth failure
+          ansible.builtin.set_fact:
+            disk_failure: >-
+              {{ ansible_failed_task.name }}:
+              {{ ansible_failed_result.stderr | default(ansible_failed_result.msg | default('Disk workflow failed'), true) }}
+
+        - name: Emit structured failure for the approved action and Jobs
+          ansible.builtin.debug:
+            msg: >-
+              OPS_CENTER_QUERY_RESULT:{{ {'available': false, 'error': disk_failure,
+                'disk_expansion': {'completed': false}, 'mode': 'apply' if disk_request.execute else 'plan'} | to_json }}
+
+        - name: Stop without reporting a completed expansion
+          ansible.builtin.fail:
+            msg: "{{ disk_failure }}"
+
+      always:
+        - name: Remove temporary guest helper
+          ansible.builtin.file:
+            path: "{{ disk_guest_temp.path }}"
+            state: absent
+          when: disk_guest_temp is defined and disk_guest_temp.path is defined
+          check_mode: false
+
+        - name: Remove temporary Proxmox helper
+          ansible.builtin.file:
+            path: "{{ disk_pve_temp.path }}"
+            state: absent
+          delegate_to: "{{ disk_proxmox_host | default(inventory_hostname) }}"
+          when: disk_pve_temp is defined and disk_pve_temp.path is defined
+          check_mode: false

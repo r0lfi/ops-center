@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InstallOpsCenter } from "@/components/PwaProvider";
 import { useAuth } from "@/lib/auth";
 
 export default function Login() {
@@ -69,6 +70,7 @@ export default function Login() {
               {submitting ? "Signing in..." : "Sign in"}
             </Button>
           </form>
+          <div className="mt-4 flex justify-center"><InstallOpsCenter compact={false} /></div>
         </CardContent>
       </Card>
     </div>

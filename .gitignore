@@ -42,3 +42,9 @@ ansible/inventory/hosts.yml
 # Generated HA topology and credentials (generate outside this repository).
 ha-runtime/
 ha-inventory.json
+
+# Browser tests and local validation artifacts are never release inputs.
+.test-env/
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo

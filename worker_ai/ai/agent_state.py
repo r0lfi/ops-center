@@ -26,6 +26,10 @@ def set_agent_state(
     is authoritative if the two ever disagree (e.g. a dropped Redis
     connection), matching the "never hallucinate state" policy.
     """
+    from worker_ai.ai.collaboration import CURRENT
+    if CURRENT.get() is not None:
+        activity = "Collaboration investigation" if activity else None
+        target, task_id = None, None
     agent.status = status
     agent.current_task = activity[:_MAX_ACTIVITY_LEN] if activity else None
     agent.last_activity_at = datetime.now(timezone.utc)

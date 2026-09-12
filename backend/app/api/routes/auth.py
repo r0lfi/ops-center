@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,16 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
     user.last_login_at = datetime.now(timezone.utc)
     await db.commit()
 
+    token = create_access_token(str(user.id), user.username, user.role)
+    return TokenResponse(access_token=token, role=user.role, username=user.username)
+
+
+@router.post("/auth/refresh", response_model=TokenResponse)
+async def refresh(response: Response, user: User = Depends(get_current_user)) -> TokenResponse:
+    # Renew only a currently valid bearer token for an active database user.
+    # The frontend keeps open dashboards alive without extending token lifetime.
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
     token = create_access_token(str(user.id), user.username, user.role)
     return TokenResponse(access_token=token, role=user.role, username=user.username)
 

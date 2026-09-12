@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { ProviderKeyDialog } from "@/components/ai/ProviderKeyDialog";
@@ -22,6 +23,7 @@ export default function AISettings() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Settings</h1>
+      <Link className="inline-block text-sm text-primary hover:underline" to="/ai-agents/collaboration/settings">Manage collaboration budgets, permissions and rules</Link>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">AI Providers</CardTitle>

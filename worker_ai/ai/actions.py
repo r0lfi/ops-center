@@ -6,22 +6,32 @@ restart_service/run_ansible_job/reboot_host/run_shell_command during a
 run - see runtime.py's dispatch loop and exec_tools.py's module docstring
 for why this never performs the action itself.
 """
+
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.ai import AIAction, AIAgent
+from app.models.ai import AIAction, AIAgent, AITask
 from app.models.host import Host
 from worker_ai.ai.agent_state import set_agent_state
-from worker_ai.ai.tools.exec_tools import TOOL_ACTION_LABEL, TOOL_APPROVAL_LEVEL, TOOL_RISK
+from worker_ai.ai.tools.exec_tools import (
+    TOOL_ACTION_LABEL,
+    TOOL_APPROVAL_LEVEL,
+    TOOL_RISK,
+)
 
 APPROVAL_EXPIRY_MINUTES = 15
 
 
 def request_approval(
-    db: Session, agent: AIAgent, tool_name: str, arguments: dict, task_id: str | None, reason: str
+    db: Session,
+    agent: AIAgent,
+    tool_name: str,
+    arguments: dict,
+    task_id: str | None,
+    reason: str,
 ) -> dict:
     # Reuse an identical, still-live request instead of minting a new code
     # every time - real incident: an agent re-asked the same question (or a
@@ -33,20 +43,36 @@ def request_approval(
     # still within their own expiry window - this is "is there already an
     # in-flight identical request", never "was this already run before"
     # (a rerun of an already-executed command is a deliberate new run).
+    if tool_name == "expand_disk":
+        from worker_ai.disk_ops import prepare_disk_arguments
+        try:
+            arguments = prepare_disk_arguments(db, agent, arguments)
+        except ValueError as exc:
+            return {"available": False, "error": str(exc)}
     now = datetime.now(timezone.utc)
-    existing = db.execute(
-        select(AIAction)
-        .where(
-            AIAction.tool == tool_name,
-            AIAction.arguments == arguments,
-            AIAction.status.in_(("pending", "approved")),
-            AIAction.expires_at > now,
+    existing = (
+        db.execute(
+            select(AIAction)
+            .where(
+                AIAction.task_id == task_id,
+                AIAction.agent_id == agent.id,
+                AIAction.tool == tool_name,
+                AIAction.arguments == arguments,
+                AIAction.status.in_(("pending", "approved")),
+                AIAction.expires_at > now,
+            )
+            .order_by(AIAction.requested_at.desc())
         )
-        .order_by(AIAction.requested_at.desc())
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing is not None:
         return {
-            "status": "pending_approval" if existing.status == "pending" else "approved_awaiting_execution",
+            "status": (
+                "pending_approval"
+                if existing.status == "pending"
+                else "approved_awaiting_execution"
+            ),
             "request_code": existing.request_code,
             "action": existing.action,
             "risk": existing.risk,
@@ -55,7 +81,7 @@ def request_approval(
                 f"An identical request is already {existing.status} (request code {existing.request_code}) - "
                 "reusing it instead of creating a new one. "
                 + (
-                    "An operator (or admin, for a level-3 action) still needs to approve it in Ops Center - "
+                    f"An operator (or admin, for a level-3 action) still needs to approve it in Ops Center - "
                     "tell the user this plainly and give them the code."
                     if existing.status == "pending"
                     else "It's already approved and will execute shortly on its own - no further action needed."
@@ -65,7 +91,9 @@ def request_approval(
 
     hostname = arguments.get("hostname")
     host = (
-        db.execute(select(Host).where(Host.hostname == hostname)).scalar_one_or_none() if hostname else None
+        db.execute(select(Host).where(Host.hostname == hostname)).scalar_one_or_none()
+        if hostname
+        else None
     )
 
     level = TOOL_APPROVAL_LEVEL.get(tool_name, 3)
@@ -73,6 +101,7 @@ def request_approval(
     risk = TOOL_RISK.get(tool_name, "medium")
     request_code = f"ACT-{now.year}-{uuid.uuid4().hex[:8].upper()}"
 
+    parent = db.get(AITask, task_id) if task_id else None
     action = AIAction(
         request_code=request_code,
         agent_id=agent.id,
@@ -85,8 +114,9 @@ def request_approval(
         risk=risk,
         reason=reason,
         status="pending",
-        source="web",
-        requested_by=None,  # the human who *asked the agent* the original question, not tracked per-action here yet
+        source=parent.source if parent else "web",
+        owner_user_id=parent.owner_user_id if parent else None,
+        requested_by=parent.requested_by if parent else None,
         requested_at=now,
         expires_at=now + timedelta(minutes=APPROVAL_EXPIRY_MINUTES),
     )
@@ -94,7 +124,9 @@ def request_approval(
     db.commit()
     db.refresh(action)
 
-    set_agent_state(db, agent, "waiting", f"Waiting for approval: {label}", hostname, task_id)
+    set_agent_state(
+        db, agent, "waiting", f"Waiting for approval: {label}", hostname, task_id
+    )
 
     return {
         "status": "pending_approval",
@@ -104,7 +136,7 @@ def request_approval(
         "approval_level": level,
         "message": (
             f"ACTION REQUIRES APPROVAL: {label}. Risk: {risk}. Request code {action.request_code}. "
-            "An operator (or admin, for a level-3 action) must approve this in Ops Center before "
+            f"An operator (or admin, for a level-3 action) must approve this in Ops Center, or in the linked private Talk room with godkjenn {action.request_code} before "
             "anything happens - tell the user this plainly and give them the code."
         ),
     }

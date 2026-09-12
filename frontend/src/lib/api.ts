@@ -1,3 +1,27 @@
+import type { AuthenticationBannerData } from "@/components/traffic/AuthenticationBanner";
+import type { SecurityData } from "@/components/traffic/SecuritySignals";
+export interface CollaborationPermissions {
+  read: boolean; post: boolean; ask: boolean; respond: boolean; peers: string[]; tools: string[];
+}
+export interface CollaborationPolicy {
+  enabled: boolean; max_active_investigations: number; max_tokens: number; max_daily_tokens: number; max_output_tokens: number;
+  max_model_calls: number; max_messages: number; max_help_requests: number; max_depth: number;
+  max_participants: number; max_seconds: number; max_post_chars: number;
+  rules: string[]; agents: Record<string, CollaborationPermissions>;
+}
+export interface CollaborationSettings {
+  revision: number; policy: CollaborationPolicy; tools: string[]; daily_charged_tokens: number;
+}
+export interface CollaborationBoard {
+  task_id: string; status: string; stop_reason: string | null; participants: string[];
+  charged_tokens: number; actual_tokens: number; model_calls: number; message_count: number;
+  created_at: string; expires_at: string; policy: CollaborationPolicy;
+}
+export interface CollaborationSummary { board: CollaborationBoard; question: string; task_status: string }
+export interface CollaborationDetail extends CollaborationSummary {
+  posts: { id: string; sequence: number; agent: string; recipient: string | null; kind: string; content: string; created_at: string }[];
+}
+
 export interface HealthResponse {
   status: "ok" | "degraded";
   app: string;
@@ -9,7 +33,22 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return apiGet<HealthResponse>("/api/health");
 }
 
+export interface TrafficSourceConfig {
+  id: string; label: string; host_id: string;
+  kind: "npm" | "caddy" | "ssh" | "auth_audit" | "wireguard";
+  enabled: boolean; use_sudo: boolean; log_path: string; domain: string;
+  application: "generic" | "jellyfin" | "wg_easy"; auth_domains: string[];
+  container: string; interface: string; journal_unit: string; ssh_failures: boolean;
+}
+export interface TrafficSettingsConfig {
+  revision: number; enabled: boolean; sources: TrafficSourceConfig[];
+  allowed_countries: string[]; trusted_dns: string[];
+  retention_days: number; max_rows: number; notify_authentication: boolean;
+}
+
 export interface TrafficEvent {
+  signal?: "auth_success" | "auth_failure" | "auth_throttled" | "auth_attempt" | "probe" | null;
+  kind: "http" | "wireguard" | "ssh" | "auth";
   id: string;
   ts: number;
   ip: string;
@@ -19,11 +58,23 @@ export interface TrafficEvent {
   country: string | null;
   domain: string;
   status: number | null;
-  source: "edge-host" | "home";
+  source: string;
   suspicious: boolean;
 }
 
+
+export interface TrafficHistory {
+  now: number; events: TrafficEvent[]; destinations: Record<string,TrafficDestPoint>;
+  stats: {total:number;clients:number;countries:number;errors:number;handshakes:number;http?:number;ssh?:number};
+  countries: {name:string;count:number}[]; domains: Record<string,number>;
+  timeline: {ts:number;count:number}[];
+  enabled?: boolean;
+  sources: {name:string;label?:string;kind?:string;last_success:number|null;error:string|null;warning?:string|null;files:number}[];
+  retention_days:number;max_rows:number;oldest:number|null;offset:number;limit:number;
+}
+
 export interface TrafficDestPoint {
+  label?: string;
   lat: number;
   lon: number;
   city: string | null;
@@ -515,7 +566,7 @@ export interface AutomationRunRequest {
   required_services?: string[];
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
@@ -531,8 +582,10 @@ export function getToken(): string | null {
 }
 
 export function setToken(token: string | null): void {
+  const changed = token !== getToken();
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
+  if (changed) window.dispatchEvent(new Event("ops-session-changed"));
 }
 
 // Set by the auth context on mount so a 401 anywhere in the app can force a
@@ -556,35 +609,83 @@ export function setApiErrorHandler(handler: ((message: string) => void) | null):
   onApiError = handler;
 }
 
-function authHeaders(): Record<string, string> {
-  const token = getToken();
+function authHeaders(token: string | null): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function handleUnauthorized(res: Response): void {
-  if (res.status === 401) onUnauthorized?.();
+function handleUnauthorized(res: Response, token: string | null): void {
+  // A late response from an old request must not discard a renewed/new session.
+  if (res.status === 401 && token === getToken()) onUnauthorized?.();
+}
+
+let renewal: Promise<void> | null = null;
+
+/** Renew an open session before expiry. This never stores passwords or replays commands. */
+export async function renewSession(): Promise<void> {
+  const token = getToken();
+  if (!token) return;
+  let expires: number;
+  try {
+    const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    expires = Number(JSON.parse(atob(encoded)).exp) * 1000;
+  } catch { return; } // Non-JWT/invalid tokens are still validated by the backend.
+  if (!Number.isFinite(expires) || expires - Date.now() > 5 * 60 * 1000) return;
+  if (renewal) return renewal;
+  const pending = (async () => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await apiFetch("/api/auth/refresh", { method: "POST", headers: authHeaders(token), signal: controller.signal });
+      if (!res.ok) {
+        handleUnauthorized(res, token);
+        throw new ApiError(await safeDetail(res), res.status);
+      }
+      const data: LoginResponse = await res.json();
+      if (!data.access_token) throw new Error("Session renewal returned no token");
+      // Logout or login in this/another tab wins over an in-flight renewal.
+      if (getToken() === token) setToken(data.access_token);
+    } finally { clearTimeout(timeout); }
+  })();
+  renewal = pending;
+  try { await pending; } finally { if (renewal === pending) renewal = null; }
+}
+
+// Preserve auth and command semantics; never queue or replay failed requests.
+async function apiFetch(path: string, options: RequestInit): Promise<Response> {
+  try {
+    const response = await fetch(path, { ...options, cache: "no-store" });
+    if (response.status >= 500) window.dispatchEvent(new Event("ops-backend-unavailable"));
+    return response;
+  } catch (error) {
+    window.dispatchEvent(new Event("ops-backend-unavailable"));
+    throw error;
+  }
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: authHeaders() });
+  await renewSession();
+  const token = getToken();
+  const res = await apiFetch(path, { headers: authHeaders(token) });
   if (!res.ok) {
-    handleUnauthorized(res);
+    handleUnauthorized(res, token);
     throw new ApiError(await safeDetail(res), res.status);
   }
   return res.json();
 }
 
 async function apiSend<T>(path: string, method: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
+  if (path !== "/api/auth/login") await renewSession();
+  const token = getToken();
+  const res = await apiFetch(path, {
     method,
     headers: {
-      ...authHeaders(),
+      ...authHeaders(token),
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    handleUnauthorized(res);
+    handleUnauthorized(res, token);
     const detail = await safeDetail(res);
     if (res.status !== 401) onApiError?.(detail);
     throw new ApiError(detail, res.status);
@@ -1055,6 +1156,14 @@ export const api = {
     services: (): Promise<{ available: boolean; services: ServiceStatus[] }> => apiGet("/api/metrics/services"),
   },
   traffic: {
+    settings: (): Promise<TrafficSettingsConfig> => apiGet("/api/settings/traffic"),
+    updateSettings: (config: TrafficSettingsConfig): Promise<TrafficSettingsConfig> => apiSend("/api/settings/traffic", "PUT", config),
+    authenticationBanner: (): Promise<AuthenticationBannerData> => apiGet("/api/traffic/security/banner"),
+    security: (service: string, hours: number, result = "all", offset = 0): Promise<SecurityData> => apiGet(`/api/traffic/security?service=${encodeURIComponent(service)}&hours=${hours}&auth_result=${encodeURIComponent(result)}&auth_offset=${offset}`),
+    reviewSecurity: (id: number): Promise<{ok:boolean}> => apiSend(`/api/traffic/security/${id}/review`, "POST"),
+    history: (params: {hours:number;service:string;errors:boolean;search:string;offset:number;until?:number}): Promise<TrafficHistory> => {
+      const qs=new URLSearchParams();Object.entries(params).forEach(([k,v])=>{if(v!==undefined)qs.set(k,String(v))});return apiGet(`/api/traffic/history?${qs}`);
+    },
     live: (since = 0): Promise<LiveTrafficResponse> => apiGet(`/api/traffic/live?since=${since}`),
   },
   patching: {
@@ -1085,6 +1194,15 @@ export const api = {
     cancel: (id: string): Promise<AnsibleJob> => apiSend(`/api/jobs/${id}/cancel`, "POST"),
   },
   ai: {
+    collaboration: {
+      settings: (): Promise<CollaborationSettings> => apiGet("/api/ai/collaboration/settings"),
+      save: (revision: number, policy: CollaborationPolicy): Promise<CollaborationSettings> => apiSend("/api/ai/collaboration/settings", "PUT", { revision, policy }),
+      boards: (offset = 0): Promise<CollaborationSummary[]> => apiGet(`/api/ai/collaboration/boards?offset=${offset}`),
+      board: (id: string): Promise<CollaborationDetail> => apiGet(`/api/ai/collaboration/boards/${id}`),
+      stop: (id: string): Promise<CollaborationBoard> => apiSend(`/api/ai/collaboration/boards/${id}/stop`, "POST"),
+      start: (message: string, agent: string): Promise<{ task_id: string }> => apiSend("/api/ai/collaboration/boards", "POST", { message, agent }),
+    },
+
     memory: {
       list: (): Promise<{ enabled: boolean; items: PersonalMemory[] }> => apiGet("/api/ai/memory"),
       save: (key: string, content: string, agentId: string | null = null): Promise<{ ok: boolean }> => apiSend("/api/ai/memory", "PUT", { key, content, agent_id: agentId }),

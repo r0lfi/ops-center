@@ -39,7 +39,7 @@
         msg: "OPS_CENTER_QUERY_RESULT:{{ {'services': service_status_list | default([])} | to_json }}"
 
     - name: Publish monitored-unit textfile metric
-      when: monitored_services | length > 0
+      when: monitored_services | length > 0 and not (query_only | default(false) | bool)
       ansible.builtin.copy:
         dest: /var/lib/node_exporter/textfile_collector/ops_center_services.prom
         owner: root

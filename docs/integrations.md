@@ -6,7 +6,7 @@ Edit the target's private `.env`, then apply changes with `sudo docker compose u
 
 Configure AI providers through the AI settings UI. Provider files live under `DATA_ROOT/secrets/ai-providers`, writable only by the API's UID 1000. SSH credentials and other integration secrets use separate paths.
 
-For an existing Nextcloud Talk bot, place its shared secret at `secrets/integrations/talk-bot-secret` and set `TALK_BACKEND_URL` to your Nextcloud URL. Configure Nextcloud's webhook to the Ops Center integration endpoint. `TALK_MEMORY_BINDINGS` is an optional JSON array of `{actor_id, room_token, user_id}` mappings; use your own actor/room identifiers and Ops Center user UUIDs. Registering the bot and configuring Nextcloud are outside the installer.
+For an existing Nextcloud Talk bot, place its shared secret at `secrets/integrations/talk-bot-secret` and set `TALK_BACKEND_URL` to your Nextcloud URL. Configure Nextcloud's webhook to the Ops Center integration endpoint. Set `TALK_NOTIFICATIONS_ENABLED=true` to opt into background delivery. The API and AI worker must use the same explicitly configured HTTPS backend; webhook-supplied destinations are not trusted. `TALK_MEMORY_BINDINGS` is an optional JSON array of `{actor_id, room_token, user_id}` mappings; use your own actor/room identifiers and Ops Center user UUIDs. Registering the bot and configuring Nextcloud are outside the installer.
 
 ## Cameras and UniFi
 
@@ -24,11 +24,13 @@ The watchdog actively asks UniFi to reconnect unreachable clients. Opt in with `
 
 ## VPN
 
-`WG_EASY_URL` enables the existing legacy wg-easy `/api/wireguard/client` integration. Its client expects a trusted private API without an interactive authentication flow. Newer or differently configured wg-easy deployments may be incompatible. Do not disable authentication on a public endpoint to accommodate it. The installer does not create a VPN or routing/firewall rules.
+Set `WIREGUARD_URL=https://vpn-admin.example.org` for a wg-easy **v14** session API. Store the password under `DATA_ROOT/secrets/integrations/wireguard-admin-password` (owner UID 1000, mode 0600), or set `WIREGUARD_PASSWORD_PATH` to another path relative to the secrets root. Ops Center establishes a verified HTTPS session for each operation and closes it afterward. No VPN password or session cookie enters the browser. Other versions may have a different API contract; do not disable upstream authentication to accommodate them. This replaces the former unauthenticated `WG_EASY_URL` integration. The installer does not create VPN, routing or firewall rules.
 
-## Traffic map
+## Traffic Map
 
-Set `TRAFFIC_CADDY_HOST` and/or `TRAFFIC_NPM_HOST` to hostnames already onboarded with SSH credentials. Set `TRAFFIC_CADDY_LOG` and `TRAFFIC_NPM_LOG_DIR` to your log paths. The Caddy reader uses non-interactive sudo for read access. A supported MMDB database at `DATA_ROOT/geoip/dbip-city-lite.mmdb` enables locations; no GeoIP data is bundled.
+Use **Settings → Traffic Map & authentication** to add your own onboarded servers, source types, paths, retention and trusted login origins. New installations start disabled. The supported readers are Nginx Proxy Manager, Caddy, application authentication JSONL, OpenSSH journals and WireGuard handshakes. See [Traffic Map setup and upgrade guide](traffic-map.md).
+
+A supported local MMDB file at `DATA_ROOT/geoip/dbip-city-lite.mmdb` enables locations. No GeoIP database is bundled. Server destination coordinates are entered on the server record. Legacy `TRAFFIC_CADDY_*`/`TRAFFIC_NPM_*` environment settings are replaced by database configuration.
 
 ## Logs from managed hosts
 

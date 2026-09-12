@@ -1,4 +1,5 @@
 import httpx
+from worker_ai.ai.transport import post
 
 from worker_ai.ai.providers.base import AIProvider, ProviderError, ProviderResult, ToolCall
 
@@ -16,12 +17,13 @@ class OllamaProvider(AIProvider):
         ]
         wire_messages = [{"role": "system", "content": system}, *messages]
         try:
-            resp = httpx.post(
+            resp = post(
                 f"{self._base_url}/api/chat",
                 json={
                     "model": model,
                     "messages": wire_messages,
                     "stream": False,
+                    "options": {"num_predict": max_tokens},
                     **({"tools": ollama_tools} if ollama_tools else {}),
                 },
                 timeout=120.0,

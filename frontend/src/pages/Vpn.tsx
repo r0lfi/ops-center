@@ -39,7 +39,7 @@ function formatBytes(n: number): string {
 const STALE_AFTER_SECONDS = 180;
 
 const ARCHITECTURE_REFERENCE: { component: string; detail: string; status?: "ok" | "warning" | "unknown" }[] = [
-  { component: "Deployment", detail: "Optional legacy wg-easy integration. Configure WG_EASY_URL for a compatible private API. Routing and firewall rules are managed outside Ops Center.", status: "unknown" },
+  { component: "Integration", detail: "Optional wg-easy v14 session API over HTTPS. Configure WIREGUARD_URL and its password file. Routing and firewall rules are managed outside Ops Center.", status: "unknown" },
 ];
 
 function ArchitectureReference() {
@@ -169,7 +169,7 @@ function AddPeerDialog({ onCreated }: { onCreated: () => void }) {
           <DialogTitle>New VPN peer</DialogTitle>
         </DialogHeader>
         <p className="text-xs text-muted-foreground">
-          Creates a WireGuard client on the configured wg-easy server. Download its configuration from your wg-easy interface.
+          Creates a WireGuard client with the routing defaults of your configured wg-easy server. Download the configuration from its administration interface.
         </p>
         <form className="space-y-3" onSubmit={handleSubmit}>
           <div className="space-y-1.5">
@@ -197,7 +197,7 @@ function AddPeerDialog({ onCreated }: { onCreated: () => void }) {
 export default function Vpn() {
   const { hasRole } = useAuth();
   const [peers, setPeers] = useState<VpnPeer[] | null>(null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const canManage = hasRole("admin");
 
   const refresh = useCallback(() => {
@@ -205,9 +205,9 @@ export default function Vpn() {
       .list()
       .then((p) => {
         setPeers(p);
-        setError(false);
+        setError(null);
       })
-      .catch(() => setError(true));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load WireGuard peers."));
   }, []);
 
   useEffect(() => {
@@ -231,13 +231,13 @@ export default function Vpn() {
             VPN
           </h1>
           <p className="text-sm text-muted-foreground">
-            WireGuard peers from the optional wg-easy integration.
+            Manage peers through the configured WireGuard integration. Ops Center authenticates on the server; credentials are never sent to your browser.
           </p>
         </div>
         {canManage && <AddPeerDialog onCreated={refresh} />}
       </div>
 
-      {error && <p className="text-sm text-status-warning">wg-easy is unreachable right now.</p>}
+      {error && <p className="text-sm text-status-warning">{error}</p>}
 
       {peers && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

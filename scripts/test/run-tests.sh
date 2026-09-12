@@ -6,7 +6,10 @@ VENV_ROOT="${OPS_CENTER_TEST_VENV:-$ROOT/.venv-tests}"
 for component in backend worker security worker_ai; do
   python3 -m venv "$VENV_ROOT/$component"
   "$VENV_ROOT/$component/bin/pip" install --quiet -r "$component/requirements.txt" pytest pytest-asyncio
-  PYTHONPATH="$ROOT:$ROOT/backend" "$VENV_ROOT/$component/bin/python" -m pytest "$component/tests" -q
+  if [[ "$component" == backend ]]; then
+    "$VENV_ROOT/$component/bin/pip" install --quiet ansible-core==2.18.19
+  fi
+  OPS_TEST_ANSIBLE_PLAYBOOK="$VENV_ROOT/backend/bin/ansible-playbook" PYTHONPATH="$ROOT:$ROOT/backend" "$VENV_ROOT/$component/bin/python" -m pytest "$component/tests" -q
 done
 "$VENV_ROOT/backend/bin/python" -m pytest tests -q
 "$VENV_ROOT/worker/bin/ansible-playbook" --syntax-check -i deploy/inventory.example.ini deploy/install.yml -e ops_admin_username=test -e ops_admin_password=validation-only-password -e ops_release_archive=/tmp/unused.tar.gz

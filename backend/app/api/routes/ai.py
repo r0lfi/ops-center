@@ -5,11 +5,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
 from app.db.session import get_db
+from app.services.action_approval import decide_action
+from app.core.action_policy import ActionDenied
 from app.models.ai import AIAction, AIAgent, AIFinding, AIProvider, AITask, AIUsage
 from app.models.user import User
 from app.schemas.ai import (
@@ -220,8 +222,8 @@ async def ask_ops_ai(
 
 
 @router.get("/ai/tasks", response_model=list[AITaskRead])
-async def list_tasks(limit: int = Query(default=50, ge=1, le=500), db: AsyncSession = Depends(get_db)) -> list[AITask]:
-    result = await db.execute(select(AITask).order_by(AITask.created_at.desc()).limit(limit))
+async def list_tasks(limit: int = Query(default=50, ge=1, le=500), db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[AITask]:
+    result = await db.execute(select(AITask).where(or_(AITask.source != "collaboration", AITask.owner_user_id == current_user.id)).order_by(AITask.created_at.desc()).limit(limit))
     return list(result.scalars().all())
 
 
@@ -291,10 +293,10 @@ async def usage_by_day(days: int = Query(default=7, ge=1, le=90), db: AsyncSessi
 
 
 @router.post("/ai/tasks/{task_id}/cancel", response_model=AITaskRead, dependencies=[Depends(require_role("operator"))])
-async def cancel_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> AITask:
+async def cancel_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> AITask:
     """Cooperative cancellation: an in-flight call finishes, then no new step starts."""
     task = (await db.execute(select(AITask).where(AITask.id == task_id).with_for_update())).scalar_one_or_none()
-    if task is None:
+    if task is None or (getattr(task, "source", None) == "collaboration" and task.owner_user_id != current_user.id):
         raise HTTPException(status_code=404, detail="task not found")
     if task.status == "cancelled":
         return task
@@ -308,9 +310,9 @@ async def cancel_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)) ->
 
 
 @router.get("/ai/tasks/{task_id}", response_model=AITaskRead)
-async def get_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> AITask:
+async def get_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> AITask:
     task = await db.get(AITask, task_id)
-    if task is None:
+    if task is None or (getattr(task, "source", None) == "collaboration" and task.owner_user_id != current_user.id):
         raise HTTPException(status_code=404, detail="task not found")
     return task
 
@@ -361,30 +363,12 @@ async def list_actions(
 async def approve_action(
     action_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> AIAction:
-    action = await db.get(AIAction, action_id)
-    if action is None:
-        raise HTTPException(status_code=404, detail="action not found")
-    if action.task_id:
-        parent = await db.get(AITask, action.task_id)
-        if parent is not None and parent.status == "cancelled":
-            raise HTTPException(status_code=409, detail="the task was cancelled")
-    if action.status != "pending":
-        raise HTTPException(status_code=409, detail=f"action is already {action.status}")
-    if action.expires_at and action.expires_at < datetime.now(timezone.utc):
-        action.status = "expired"
-        await db.commit()
-        raise HTTPException(status_code=409, detail="action has expired")
-    if action.approval_level >= 3 and not role_at_least(current_user.role, "admin"):
-        raise HTTPException(status_code=403, detail="a level-3 action requires an admin to approve")
+    try:
+        return await decide_action(db, current_user, action_id=action_id, approve=True)
+    except ActionDenied as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    action.status = "approved"
-    action.approved_by = current_user.username
-    action.approved_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(action)
-
-    get_celery_client().send_task("worker_ai.tasks.execute_action_task", args=[str(action.id)], queue="ai")
-    return action
 
 
 @router.post(
@@ -395,20 +379,12 @@ async def approve_action(
 async def reject_action(
     action_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> AIAction:
-    action = await db.get(AIAction, action_id)
-    if action is None:
-        raise HTTPException(status_code=404, detail="action not found")
-    if action.status != "pending":
-        raise HTTPException(status_code=409, detail=f"action is already {action.status}")
-    if action.approval_level >= 3 and not role_at_least(current_user.role, "admin"):
-        raise HTTPException(status_code=403, detail="a level-3 action requires an admin to reject")
+    try:
+        return await decide_action(db, current_user, action_id=action_id, approve=False)
+    except ActionDenied as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    action.status = "rejected"
-    action.approved_by = current_user.username
-    action.approved_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(action)
-    return action
 
 
 # --------------------------------------------------------------------- #

@@ -37,19 +37,11 @@ def _resolve_secret(secret_path: str) -> Path:
 
 
 class _PinnedHostKeyClient(asyncssh.SSHClient):
-    """Custom SSHClient used only to intercept host-key validation.
+    """Verify the managed host's key before transmitting authentication.
 
-    We pass known_hosts=None below because we don't maintain an OpenSSH
-    known_hosts file - the trusted fingerprint lives on the Host row
-    instead (ssh_host_fingerprint, recorded on first contact). But
-    known_hosts=None on its own means asyncssh performs NO verification
-    at all: every connection - not just the first - would silently accept
-    whatever key the server presents. Overriding validate_host_public_key
-    via client_factory is what actually enforces the pin on every
-    connection after the first. This runs during key exchange, before any
-    authentication data (including a plaintext password credential) is
-    sent, so a rejected key aborts before the credential ever reaches the
-    other end.
+    An explicit empty known-hosts list activates this callback. None would
+    disable validation entirely. First onboarding uses trust-on-first-use;
+    later connections must match the fingerprint stored on the Host record.
     """
 
     def __init__(self, expected_fingerprint: str | None):
@@ -112,7 +104,8 @@ async def check_ssh(
         host=ip,
         port=port,
         username=username,
-        known_hosts=None,  # verification is done by _PinnedHostKeyClient above instead
+        known_hosts=[],  # require the explicit fingerprint callback
+        config=None,
         client_factory=_client_factory,
         connect_timeout=SSH_TIMEOUT,
     )

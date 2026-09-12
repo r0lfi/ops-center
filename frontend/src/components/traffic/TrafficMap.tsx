@@ -1,308 +1,143 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, ArrowDown, ArrowUp, Database, Globe2, Pause, Play, Radio, RefreshCw, Search, ShieldCheck, Wifi } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, PieChart, Pie, Cell } from "recharts";
+import { useSearchParams } from "react-router-dom";
+import { api, type TrafficHistory, type TrafficEvent } from "@/lib/api";
+import { project } from "@/lib/mapProjection";
+import "./traffic-map.css";
+import { AuthenticationBanner } from "./AuthenticationBanner";
+import { SecuritySignals } from "./SecuritySignals";
 
-import { api, type TrafficDestPoint, type TrafficEvent } from "@/lib/api";
-import { mapSizeForZoom, project } from "@/lib/mapProjection";
+const COLORS = ["#38bdf8", "#fb7185", "#a78bfa"];
+const number = (n: number) => new Intl.NumberFormat("en", { notation: n > 99999 ? "compact" : "standard" }).format(n);
+const clock = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const date = (ts: number) => new Date(ts * 1000).toLocaleString();
+const rangeOptions = [[1,"Last hour"],[24,"Last 24 hours"],[168,"Last 7 days"],[720,"Last 30 days"]] as const;
 
-const POLL_MS = 2000;
-const ARC_DURATION_MS = 1800;
-const MAX_ARCS = 400;
-const RECENT_LIST_SIZE = 30;
-// Zoomed in further than a card-sized map would justify - this is a
-// dedicated full page, so it earns a bigger/sharper grid (4x4 = 16 tiles,
-// still a fixed grid that's never panned/zoomed).
-const ZOOM = 2;
-const MAP_SIZE = mapSizeForZoom(ZOOM);
-
-const COLOR_OK = "52, 211, 153"; // emerald-400
-const COLOR_BAD = "251, 58, 93"; // rose-500ish, brighter than the theme's --status-critical for glow contrast
-
-interface Arc {
-  event: TrafficEvent;
-  fromX: number;
-  fromY: number;
-  toX: number;
-  toY: number;
-  startedAt: number;
+function ObservationsMap({data}: {data: TrafficHistory}) {
+  const points = useMemo(() => {
+    const groups = new Map<string, {event: TrafficEvent; count: number}>();
+    for (const event of data.events) {
+      if (event.lat == null || event.lon == null) continue;
+      const key = [event.ip,event.source,event.kind].join("|");
+      const point = groups.get(key);
+      if (point) point.count++; else groups.set(key,{event,count:1});
+    }
+    return [...groups.values()].slice(0,100);
+  }, [data.events]);
+  return <div className="traffic-world">
+    <svg viewBox="0 135 1024 590" role="img" aria-label="Geolocated traffic to configured servers">
+      <defs><filter id="traffic-glow"><feGaussianBlur stdDeviation="2.5"/></filter>
+        <radialGradient id="traffic-ocean"><stop stopColor="#142841"/><stop offset="1" stopColor="#07121f"/></radialGradient></defs>
+      <rect x="0" y="135" width="1024" height="590" fill="url(#traffic-ocean)"/>
+      <g className="traffic-tiles">{Array.from({length:16},(_,i)=><image key={i} href={"https://tile.openstreetmap.org/2/"+(i%4)+"/"+Math.floor(i/4)+".png"} x={(i%4)*256} y={Math.floor(i/4)*256} width="256" height="256"/>)}</g>
+      <g opacity=".1" stroke="#78b5e0" strokeWidth=".6">{Array.from({length:12},(_,i)=><path key={i} d={"M "+i*93+" 135 V 725 M 0 "+(135+i*54)+" H 1024"}/>)}</g>
+      {points.map(({event,count})=>{
+        const from=project(event.lat!,event.lon!,2);const dest=data.destinations[event.source];
+        const to=dest?project(dest.lat,dest.lon,2):null;
+        const color=event.kind==="wireguard"?COLORS[2]:event.suspicious?COLORS[1]:COLORS[0];
+        const key=event.ip+event.source+event.kind;
+        return <g key={key}>
+          <title>{event.ip+" · "+(event.country??"Location unavailable")+" · "+event.domain+" · "+count+" shown"}</title>
+          {to&&<path d={"M "+from.x+" "+from.y+" Q "+((from.x+to.x)/2)+" "+(Math.min(from.y,to.y)-Math.min(100,Math.abs(to.x-from.x)/4+20))+" "+to.x+" "+to.y} fill="none" stroke={color} strokeWidth="1.4" opacity=".35"/>}
+          <circle cx={from.x} cy={from.y} r={5+Math.min(7,Math.log2(count+1))} fill={color} opacity=".15"/>
+          <circle cx={from.x} cy={from.y} r="3" fill={color}/>
+        </g>;
+      })}
+      {Object.entries(data.destinations).map(([name,dest])=>{
+        const p=project(dest.lat,dest.lon,2);
+        return <g key={name}><title>{dest.label??name}</title>
+          <circle cx={p.x} cy={p.y} r="11" fill="#fbbf24" opacity=".15"/>
+          <circle cx={p.x} cy={p.y} r="4" fill="#fbbf24" stroke="#fff" strokeWidth="1"/>
+          <text x={p.x+9} y={p.y-9} fill="#fef3c7" fontSize="13" fontWeight="600">{dest.label??name}</text>
+        </g>;
+      })}
+    </svg>
+    <div className="traffic-map-caption"><span><i style={{background:COLORS[0]}}/>HTTP / authentication</span><span><i style={{background:COLORS[1]}}/>Rejected / error</span><span><i style={{background:COLORS[2]}}/>VPN handshake</span></div>
+    <a className="traffic-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+    {data.events.length===0&&<div className="traffic-map-empty">No observations in this view</div>}
+  </div>;
 }
 
-function drawArc(ctx: CanvasRenderingContext2D, arc: Arc, now: number) {
-  const t = (now - arc.startedAt) / ARC_DURATION_MS;
-  if (t < 0 || t > 1) return;
-
-  const { fromX, fromY, toX, toY } = arc;
-  const dist = Math.hypot(toX - fromX, toY - fromY);
-  const midX = (fromX + toX) / 2;
-  const midY = (fromY + toY) / 2 - Math.min(140, dist / 3.2);
-  const color = arc.event.suspicious ? COLOR_BAD : COLOR_OK;
-
-  const segments = 32;
-  const upto = Math.max(1, Math.floor(segments * Math.min(t * 1.35, 1)));
-  const tailStart = Math.max(0, upto - 14);
-
-  ctx.save();
-  ctx.shadowBlur = arc.event.suspicious ? 14 : 8;
-  ctx.shadowColor = `rgba(${color}, 0.9)`;
-  ctx.beginPath();
-  for (let i = tailStart; i <= upto; i++) {
-    const s = i / segments;
-    const x = (1 - s) ** 2 * fromX + 2 * (1 - s) * s * midX + s ** 2 * toX;
-    const y = (1 - s) ** 2 * fromY + 2 * (1 - s) * s * midY + s ** 2 * toY;
-    if (i === tailStart) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.strokeStyle = `rgba(${color}, ${Math.max(0, 1 - t) * 0.9})`;
-  ctx.lineWidth = arc.event.suspicious ? 2 : 1.4;
-  ctx.lineCap = "round";
-  ctx.stroke();
-
-  const s = Math.min(t * 1.35, 1);
-  const x = (1 - s) ** 2 * fromX + 2 * (1 - s) * s * midX + s ** 2 * toX;
-  const y = (1 - s) ** 2 * fromY + 2 * (1 - s) * s * midY + s ** 2 * toY;
-  ctx.beginPath();
-  ctx.arc(x, y, arc.event.suspicious ? 3.5 : 2.5, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, 1 - t) * 0.95})`;
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawSourceGlow(ctx: CanvasRenderingContext2D, arc: Arc, now: number) {
-  const t = (now - arc.startedAt) / ARC_DURATION_MS;
-  if (t < 0 || t > 0.4) return;
-  const color = arc.event.suspicious ? COLOR_BAD : COLOR_OK;
-  const alpha = (1 - t / 0.4) * 0.7;
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(arc.fromX, arc.fromY, 4, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(${color}, ${alpha})`;
-  ctx.shadowBlur = 10;
-  ctx.shadowColor = `rgba(${color}, 0.9)`;
-  ctx.fill();
-  ctx.restore();
-}
-
-/**
- * Live traffic hitting edge-host (Caddy) and home (Nginx Proxy Manager) -
- * animated glowing arcs from each client's geolocated position, in the
- * spirit of Checkpoint's threat map. Backed by real access logs tailed
- * over SSH (backend/app/services/traffic_watch.py), not a simulation.
- * Green = normal, red = 4xx/5xx or an unusually high request rate from
- * the same IP within a 10s window.
- */
 export function TrafficMap() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const arcsRef = useRef<Arc[]>([]);
-  const cursorRef = useRef(Date.now() / 1000 - 5);
-  const [destinations, setDestinations] = useState<Record<string, TrafficDestPoint>>({});
-  const [recent, setRecent] = useState<TrafficEvent[]>([]);
-  const [stats, setStats] = useState({ total: 0, suspicious: 0, byCountry: new Map<string, number>() });
-  const [live, setLive] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function poll() {
+  const [params,setParams]=useSearchParams();
+  const requestedHours=Number(params.get("hours")??24);const hours=[1,24,168,720].includes(requestedHours)?requestedHours:24;const requestedService=params.get("service")??"all";const service=/^[a-z][a-z0-9_-]{0,31}$/.test(requestedService)?requestedService:"all";const errors=params.get("errors")==="true";
+  const [search,setSearch]=useState(params.get("search")??"");
+  const [query,setQuery]=useState(search);
+  const [data,setData]=useState<TrafficHistory|null>(null);
+  const [error,setError]=useState<string|null>(null);
+  const [paused,setPaused]=useState(false);const [offset,setOffset]=useState(0);const [until,setUntil]=useState<number|undefined>();
+  const [revision,setRevision]=useState(0);const [loading,setLoading]=useState(true);
+  useEffect(()=>{const t=setTimeout(()=>setQuery(search),350);return()=>clearTimeout(t)},[search]);
+  function filter(key:string,value:string) {
+    const next=new URLSearchParams(params);next.set(key,value);setParams(next,{replace:true});
+    setOffset(0);setUntil(undefined);setData(null);
+  }
+  useEffect(()=>{
+    let cancelled=false;let timer:ReturnType<typeof setTimeout>;
+    async function load() {
+      setLoading(true);
       try {
-        const result = await api.traffic.live(cursorRef.current);
-        if (cancelled) return;
-        cursorRef.current = result.now;
-        setDestinations(result.destinations);
-        setLive(true);
-
-        if (result.events.length > 0) {
-          const now = performance.now();
-          for (const event of result.events) {
-            const dest = result.destinations[event.source];
-            if (event.lat == null || event.lon == null || !dest) continue;
-            const from = project(event.lat, event.lon, ZOOM);
-            const to = project(dest.lat, dest.lon, ZOOM);
-            arcsRef.current.push({ event, fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, startedAt: now });
-          }
-          if (arcsRef.current.length > MAX_ARCS) {
-            arcsRef.current = arcsRef.current.slice(-MAX_ARCS);
-          }
-          setRecent((prev) => [...result.events, ...prev].slice(0, RECENT_LIST_SIZE));
-          setStats((prev) => {
-            const byCountry = new Map(prev.byCountry);
-            for (const e of result.events) {
-              if (e.country) byCountry.set(e.country, (byCountry.get(e.country) ?? 0) + 1);
-            }
-            return {
-              total: prev.total + result.events.length,
-              suspicious: prev.suspicious + result.events.filter((e) => e.suspicious).length,
-              byCountry,
-            };
-          });
-        }
-      } catch {
-        // ignore - transient, next poll retries
-      }
+        const result=await api.traffic.history({hours,service,errors,search:query,offset,until});
+        if(!cancelled){setData(result);setError(null)}
+      } catch(err){if(!cancelled)setError(err instanceof Error?err.message:"Traffic history is unavailable")}
+      finally{if(!cancelled){setLoading(false);if(!paused)timer=setTimeout(load,5000)}}
     }
-    poll();
-    const interval = setInterval(poll, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let raf: number;
-    function frame() {
-      const now = performance.now();
-      ctx!.clearRect(0, 0, MAP_SIZE, MAP_SIZE);
-      arcsRef.current = arcsRef.current.filter((a) => now - a.startedAt < ARC_DURATION_MS);
-      for (const arc of arcsRef.current) drawSourceGlow(ctx!, arc, now);
-      for (const arc of arcsRef.current) drawArc(ctx!, arc, now);
-      raf = requestAnimationFrame(frame);
-    }
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  const topCountries = [...stats.byCountry.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-  return (
-    <div className="flex flex-col gap-4 xl:flex-row">
-      <div
-        className="relative mx-auto shrink-0 overflow-hidden rounded-lg border border-border shadow-[0_0_40px_-10px_rgba(56,189,248,0.25)]"
-        style={{ width: MAP_SIZE, height: MAP_SIZE, maxWidth: "100%", background: "radial-gradient(ellipse at center, #0c1524 0%, #050810 100%)" }}
-      >
-        <div
-          className="absolute inset-0 grid grid-cols-4 grid-rows-4"
-          style={{ filter: "invert(1) hue-rotate(180deg) brightness(0.65) saturate(0.55) contrast(1.2)" }}
-        >
-          {Array.from({ length: 4 }, (_, y) =>
-            Array.from({ length: 4 }, (_, x) => (
-              <img
-                key={`${x}-${y}`}
-                src={`https://tile.openstreetmap.org/${ZOOM}/${x}/${y}.png`}
-                alt=""
-                className="h-full w-full"
-                loading="lazy"
-              />
-            )),
-          )}
-        </div>
-
-        {/* Vignette + faint scanline for a "command center" feel. */}
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(2,6,12,0.75) 100%)" }}
-        />
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.06]"
-          style={{
-            backgroundImage: "repeating-linear-gradient(0deg, #7dd3fc 0px, transparent 1px, transparent 3px)",
-          }}
-        />
-
-        <canvas ref={canvasRef} width={MAP_SIZE} height={MAP_SIZE} className="absolute inset-0" />
-
-        {Object.entries(destinations).map(([name, dest]) => {
-          const { x, y } = project(dest.lat, dest.lon, ZOOM);
-          return (
-            <div
-              key={name}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${(x / MAP_SIZE) * 100}%`, top: `${(y / MAP_SIZE) * 100}%` }}
-            >
-              <span className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full bg-primary/40" />
-              <span className="relative block h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_10px_2px_rgba(56,189,248,0.9)]" />
-              <span className="absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-card/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow">
-                {name}
-              </span>
-            </div>
-          );
-        })}
-
-        <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-card/80 px-2.5 py-1 text-[10px] font-medium backdrop-blur">
-          <span className={`h-1.5 w-1.5 rounded-full ${live ? "animate-pulse bg-status-ok" : "bg-status-unknown"}`} />
-          {live ? "LIVE" : "connecting..."}
-        </div>
-        <div className="absolute bottom-3 left-3 flex items-center gap-3 rounded-full bg-card/80 px-2.5 py-1 text-[10px] backdrop-blur">
-          <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-[rgb(52,211,153)] shadow-[0_0_6px_1px_rgba(52,211,153,0.8)]" />
-            normal
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-[rgb(251,58,93)] shadow-[0_0_6px_1px_rgba(251,58,93,0.8)]" />
-            suspicious
-          </span>
-        </div>
-        <p className="absolute bottom-3 right-3 text-[9px] text-muted-foreground/70">
-          Map &copy; OpenStreetMap contributors
-        </p>
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-lg border border-border bg-card p-3">
-            <div className="text-2xl font-bold tabular-nums">{stats.total}</div>
-            <div className="text-xs text-muted-foreground">requests seen</div>
-          </div>
-          <div className="rounded-lg border border-status-critical/30 bg-status-critical/5 p-3">
-            <div className="text-2xl font-bold tabular-nums text-status-critical">{stats.suspicious}</div>
-            <div className="text-xs text-muted-foreground">flagged suspicious</div>
-          </div>
-          <div className="rounded-lg border border-border bg-card p-3">
-            <div className="text-2xl font-bold tabular-nums">{Object.keys(destinations).length}</div>
-            <div className="text-xs text-muted-foreground">ingress points</div>
-          </div>
-        </div>
-
-        {topCountries.length > 0 && (
-          <div className="rounded-lg border border-border bg-card p-3">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Top countries
-            </div>
-            <div className="space-y-1.5">
-              {topCountries.map(([country, count]) => (
-                <div key={country} className="flex items-center gap-2 text-xs">
-                  <span className="w-24 shrink-0 truncate">{country}</span>
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${(count / topCountries[0][1]) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">{count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-card p-2">
-          <div className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Recent requests
-          </div>
-          <div className="space-y-1">
-            {recent.length === 0 && <p className="px-1 text-xs text-muted-foreground">Waiting for traffic...</p>}
-            {recent.map((e) => (
-              <div
-                key={e.id}
-                className={`flex items-center justify-between gap-2 rounded border-l-2 bg-secondary/40 px-2 py-1 text-xs ${
-                  e.suspicious ? "border-l-status-critical" : "border-l-status-ok"
-                }`}
-              >
-                <span className="min-w-0 truncate">
-                  <span className="font-mono font-medium">{e.ip}</span>{" "}
-                  <span className="text-muted-foreground">
-                    {e.city ? `${e.city}, ${e.country}` : (e.country ?? "unknown")}
-                  </span>
-                </span>
-                <span className="shrink-0 text-muted-foreground">
-                  {e.domain} {e.status ?? ""}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+    void load();return()=>{cancelled=true;clearTimeout(timer)};
+  },[hours,service,errors,query,offset,until,paused,revision]);
+  const stats=data?.stats??{total:0,clients:0,countries:0,errors:0,handshakes:0,http:0,ssh:0};
+  const parts=[{name:"Other observations",value:Math.max(0,stats.total-stats.handshakes-stats.errors)},{name:"Rejections / errors",value:stats.errors},{name:"VPN handshakes",value:stats.handshakes}];
+  const healthy=data?.sources.filter(s=>!s.error&&s.last_success!=null&&data.now-s.last_success<60).length??0;
+  const sourceCount=data?.sources.length??0;
+  const allHealthy=sourceCount>0&&healthy===sourceCount;
+  const serviceOptions=[["all","All services"],...(data?.sources??[]).map(s=>[s.name,s.label??s.name])];
+  const metrics=[
+    {label:"Observations",value:number(stats.total),icon:Activity,color:"#e2e8f0"},
+    {label:"HTTP requests",value:number(stats.http??stats.total-stats.handshakes),icon:Globe2,color:COLORS[0]},
+    {label:"VPN handshakes",value:number(stats.handshakes),icon:Wifi,color:COLORS[2]},
+    {label:"External clients",value:number(stats.clients),icon:Radio,color:"#34d399"},
+    {label:"Countries",value:number(stats.countries),icon:Globe2,color:"#fbbf24"},
+    {label:"Rejections / errors",value:number(stats.errors),icon:ShieldCheck,color:COLORS[1]},
+  ];
+  function newer(){setOffset(Math.max(0,offset-100))}
+  function older(){setPaused(true);setUntil(until??data?.now);setOffset(offset+100)}
+  function resume(){setOffset(0);setUntil(undefined);setPaused(false);setRevision(r=>r+1)}
+  return <div className="traffic-dashboard">
+    <AuthenticationBanner/>
+    <div className="traffic-toolbar">
+      <div className="traffic-tabs" aria-label="Traffic service filter">{serviceOptions.map(([value,label])=><button key={value} aria-pressed={service===value} onClick={()=>filter("service",value)}>{label}</button>)}</div>
+      <div className="traffic-actions">
+        <label className="sr-only" htmlFor="traffic-range">Time period</label>
+        <select id="traffic-range" value={hours} onChange={e=>filter("hours",e.target.value)}>{rangeOptions.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+        <button onClick={()=>paused?resume():setPaused(true)} title={paused?"Resume live updates":"Pause view updates"}>{paused?<Play size={14}/>:<Pause size={14}/>} {paused?"Resume":"Pause"}</button>
+        <button onClick={resume} aria-label="Refresh traffic history"><RefreshCw size={14} className={loading?"animate-spin":""}/></button>
       </div>
     </div>
-  );
+    <div className="traffic-state">
+      <span className={error?"traffic-error":paused?"traffic-muted":allHealthy?"traffic-healthy":"traffic-muted"}><i/>{error?"History unavailable":paused?"View paused":allHealthy?"Collectors live":data?.enabled===false?"Collection disabled":sourceCount===0?"No sources configured":"Connecting to sources"}</span>
+      <span><Database size={12}/> Saved history · {data?.retention_days??30} days · up to {number(data?.max_rows??500000)} observations</span>
+      {data&&<span>Updated {clock(data.now)}</span>}
+    </div>
+    {error&&<div className="traffic-alert" role="alert">{error}. Previously loaded history is still shown; retry with Refresh.</div>}
+    {data&&(!data.enabled||!sourceCount)&&<div className="traffic-alert">Configure your servers and enable collection in <a href="/settings#traffic-settings">Settings → Traffic Map & authentication</a>. Saved history remains available.</div>}
+    <div className="traffic-metrics">{metrics.map(m=><div key={m.label} className="traffic-metric"><div><span>{m.label}</span><m.icon size={14} color={m.color}/></div><strong style={{color:m.color}}>{loading&&!data?"—":m.value}</strong><small>{rangeOptions.find(r=>r[0]===hours)?.[1]??"Selected period"}</small></div>)}</div>
+    <div className="traffic-main-grid">
+      <section className="traffic-panel traffic-country-panel"><h2>Top countries <span>{stats.countries} observed</span></h2><div className="traffic-bars">{data?.countries.map((c,i)=><div key={c.name}><div><span>{c.name}</span><strong>{number(c.count)}</strong></div><div className="traffic-bar-track"><i style={{width:Math.max(2,c.count/(data.countries[0]?.count||1)*100)+"%",background:i===0?"#38bdf8":"#277897"}}/></div></div>)}{!data?.countries.length&&<p className="traffic-empty">No geolocated observations in this period.</p>}</div><p className="traffic-footnote">Locations are approximate. Unknown locations remain in the event list.</p></section>
+      <section className="traffic-panel traffic-map-panel"><h2>External activity <span>Configured servers</span></h2>{data?<ObservationsMap data={data}/>:<div className="traffic-map-loading">Loading saved observations…</div>}<p className="traffic-footnote">Map shows the current event page. Counters cover the full selected period.</p></section>
+      <section className="traffic-panel traffic-mix-panel"><h2>Observation mix</h2><div className="traffic-donut">{stats.total>0?<ResponsiveContainer width="100%" height={155}><PieChart><Pie data={parts.filter(p=>p.value>0)} dataKey="value" innerRadius={48} outerRadius={65} paddingAngle={3} stroke="none">{parts.filter(p=>p.value>0).map(p=><Cell key={p.name} fill={COLORS[parts.findIndex(x=>x.name===p.name)]}/>)}</Pie><Tooltip contentStyle={{background:"#0d1b2c",border:"1px solid #263b50",borderRadius:8,color:"#e2e8f0"}}/></PieChart></ResponsiveContainer>:<div className="traffic-empty-ring">No data</div>}</div><div className="traffic-mix-legend">{parts.map((p,i)=><div key={p.name}><i style={{background:COLORS[i]}}/><span>{p.name}</span><strong>{number(p.value)}</strong></div>)}</div></section>
+    </div>
+    <div className="traffic-secondary-grid">
+      <section className="traffic-panel"><h2>Activity over time <span>All matching observations</span></h2><div className="traffic-timeline">{data&&data.timeline.length>0?<ResponsiveContainer width="100%" height="100%"><AreaChart data={data.timeline} margin={{top:10,right:15,left:0,bottom:0}}><defs><linearGradient id="traffic-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#38bdf8" stopOpacity={.35}/><stop offset="100%" stopColor="#38bdf8" stopOpacity={0}/></linearGradient></defs><CartesianGrid vertical={false} stroke="#233247" strokeDasharray="3 4"/><XAxis dataKey="ts" tickFormatter={v=>hours>24?new Date(v*1000).toLocaleDateString([],{month:"short",day:"numeric"}):new Date(v*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} axisLine={false} tickLine={false} minTickGap={60} tick={{fill:"#7893ad",fontSize:10}}/><Tooltip labelFormatter={v=>date(Number(v))} contentStyle={{background:"#0d1b2c",border:"1px solid #263b50",borderRadius:8}}/><Area type="monotone" dataKey="count" name="Observations" stroke="#38bdf8" strokeWidth={2} fill="url(#traffic-area)" isAnimationActive={false}/></AreaChart></ResponsiveContainer>:<div className="traffic-empty">Activity appears as observations are collected.</div>}</div></section>
+      <section className="traffic-panel"><h2>Collection status <span>{healthy}/{sourceCount} current</span></h2><div className="traffic-source-list">{data?.sources.map(source=>{
+        const ok=!source.error&&source.last_success!=null&&data!.now-source.last_success<60;
+        return <div key={source.name}><i className={ok?"traffic-dot-ok":"traffic-dot-warn"}/><div><strong>{source.label??source.name}</strong><small>{source.error??source.warning??source.kind}</small></div><span>{ok?"Collecting":source.error?"Retrying":"Waiting"}</span></div>
+      })}</div><p className="traffic-footnote">Collection continues while this page is closed or paused. VPN scans and failed UDP attempts are not available from WireGuard handshake data.</p></section>
+    </div>
+    <SecuritySignals service={service} hours={hours}/>
+    <section className="traffic-panel traffic-events">
+      <div className="traffic-table-toolbar"><h2>Event history <span>{number(stats.total)} matching</span></h2><div><label className="traffic-search"><Search size={14}/><input aria-label="Search traffic history" placeholder="Search IP, country or domain…" value={search} onChange={e=>{setSearch(e.target.value);setOffset(0);setUntil(undefined)}}/></label><label className="traffic-error-filter"><input type="checkbox" checked={errors} onChange={e=>filter("errors",String(e.target.checked))}/> Rejections / errors only</label></div></div>
+      <div className="traffic-table-scroll"><table><thead><tr><th>Observed</th><th>Client</th><th>Location</th><th>Service</th><th>Observation</th><th>Result</th></tr></thead><tbody>{data?.events.map(e=><tr key={e.id}><td title={date(e.ts)}>{new Date(e.ts*1000).toLocaleDateString([],{month:"short",day:"numeric"})}<span>{clock(e.ts)}</span></td><td className="traffic-ip">{e.ip}</td><td>{e.country??"Unknown"}<span>{e.city??"Location unavailable"}</span></td><td>{e.domain}<span>{data.sources.find(s=>s.name===e.source)?.label??e.source}</span></td><td><span className={"traffic-kind "+(e.kind==="wireguard"?"traffic-vpn":"")}>{e.kind==="wireguard"?"VPN handshake":e.kind==="ssh"?"SSH authentication":e.signal?.startsWith("auth_")?"Login request":"HTTP request"}</span></td><td><span className={e.suspicious?"traffic-result-error":"traffic-result-ok"}>{e.kind==="wireguard"?"Authenticated":e.signal==="auth_success"?"Login accepted":e.signal==="auth_failure"?"Login rejected":e.signal==="auth_throttled"?"Rate limited":e.signal==="auth_attempt"?"Not authenticated":e.status}</span></td></tr>)}</tbody></table>{!data?.events.length&&<div className="traffic-table-empty">{loading?"Loading saved history…":"No observations match these filters. Collection is independent of this page."}</div>}</div>
+      <div className="traffic-table-footer"><span>HTTP errors are diagnostic signals, not proof of an attack.</span><div><span>{stats.total?offset+1:0}–{offset+(data?.events.length??0)} of {number(stats.total)}</span><button disabled={offset===0} onClick={newer}><ArrowUp size={13}/> Newer</button><button disabled={!data||offset+data.events.length>=stats.total} onClick={older}><ArrowDown size={13}/> Older</button></div></div>
+    </section>
+  </div>;
 }

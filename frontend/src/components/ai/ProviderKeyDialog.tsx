@@ -53,7 +53,7 @@ export function ProviderKeyDialog({ provider, onSaved }: { provider: AIProvider;
           {provider.kind === "ollama" && (
             <div className="space-y-1">
               <Label>Base URL</Label>
-              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="http://192.0.2.10:11434" />
+              <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="http://192.0.2.38:11434" />
             </div>
           )}
           <div className="space-y-1">

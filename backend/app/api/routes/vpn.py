@@ -1,21 +1,13 @@
-"""Optional legacy wg-easy API integration on a trusted private network."""
+"""WireGuard peer management through a server-side authenticated wg-easy session."""
 import httpx
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.vpn import VpnPeer, VpnPeerCreate
+from app.services.wireguard import wireguard_client
 
 router = APIRouter()
 
-from app.core.config import get_settings
-
-_WG_EASY_URL = get_settings().wg_easy_url
-_TIMEOUT = 5.0
 _PEER_NOTES: dict[str, str] = {}
-
-
-def _require_configured() -> None:
-    if not _WG_EASY_URL:
-        raise HTTPException(status_code=503, detail="VPN integration is not configured")
 
 
 def _to_peer(c: dict) -> VpnPeer:
@@ -32,12 +24,11 @@ def _to_peer(c: dict) -> VpnPeer:
 
 
 async def _list_raw() -> list[dict]:
-    _require_configured()
     try:
-        async with httpx.AsyncClient(base_url=_WG_EASY_URL, timeout=_TIMEOUT) as client:
+        async with wireguard_client() as client:
             resp = await client.get("/api/wireguard/client")
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"wg-easy unreachable: {exc}") from exc
+        raise HTTPException(status_code=502, detail="WireGuard could not be reached") from exc
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="wg-easy returned an error listing clients")
     return resp.json()
@@ -53,12 +44,11 @@ async def create_peer(payload: VpnPeerCreate) -> VpnPeer:
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-    _require_configured()
     try:
-        async with httpx.AsyncClient(base_url=_WG_EASY_URL, timeout=_TIMEOUT) as client:
+        async with wireguard_client() as client:
             resp = await client.post("/api/wireguard/client", json={"name": name})
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"wg-easy unreachable: {exc}") from exc
+        raise HTTPException(status_code=502, detail="WireGuard could not be reached") from exc
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"wg-easy rejected the new client ({resp.status_code})")
 
@@ -72,12 +62,11 @@ async def create_peer(payload: VpnPeerCreate) -> VpnPeer:
 
 @router.delete("/vpn/peers/{peer_id}")
 async def delete_peer(peer_id: str) -> dict:
-    _require_configured()
     try:
-        async with httpx.AsyncClient(base_url=_WG_EASY_URL, timeout=_TIMEOUT) as client:
+        async with wireguard_client() as client:
             resp = await client.delete(f"/api/wireguard/client/{peer_id}")
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"wg-easy unreachable: {exc}") from exc
+        raise HTTPException(status_code=502, detail="WireGuard could not be reached") from exc
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"wg-easy rejected delete ({resp.status_code})")
     return {"ok": True}
@@ -85,12 +74,11 @@ async def delete_peer(peer_id: str) -> dict:
 
 @router.get("/vpn/peers/{peer_id}/config")
 async def get_peer_config(peer_id: str) -> dict:
-    _require_configured()
     try:
-        async with httpx.AsyncClient(base_url=_WG_EASY_URL, timeout=_TIMEOUT) as client:
+        async with wireguard_client() as client:
             resp = await client.get(f"/api/wireguard/client/{peer_id}/configuration")
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"wg-easy unreachable: {exc}") from exc
+        raise HTTPException(status_code=502, detail="WireGuard could not be reached") from exc
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="wg-easy did not return a configuration")
     return {"configuration": resp.text}

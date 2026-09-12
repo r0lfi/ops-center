@@ -27,6 +27,12 @@ def _redact(value):
     return value
 
 
+def _audit_parameters(path, body):
+    if path.rstrip("/") == "/api/ai/collaboration/boards":
+        return {"agent": body.get("agent") if isinstance(body, dict) else None, "message": "[private collaboration input omitted]"}
+    return _redact(body)
+
+
 def _user_from_request(request: Request) -> str | None:
     auth = request.headers.get("authorization", "")
     if not auth.startswith("Bearer "):
@@ -70,7 +76,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                             source_ip=request.client.host if request.client else None,
                             action=request.method,
                             target=request.url.path,
-                            parameters=_redact(body_json),
+                            parameters=_audit_parameters(request.url.path, body_json),
                             result=str(response.status_code),
                         )
                     )

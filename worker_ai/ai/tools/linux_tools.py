@@ -48,7 +48,7 @@ GET_RUNNING_PROCESSES_SCHEMA = {
 
 
 def get_service_status(hostname: str, service: str) -> dict:
-    return run_ansible_query(hostname, "service-check.yml", {"services": [service]})
+    return run_ansible_query(hostname, "service-check.yml", {"services": [service], "query_only": True})
 
 
 def get_disk_usage(hostname: str) -> dict:

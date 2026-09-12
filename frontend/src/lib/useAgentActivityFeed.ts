@@ -1,6 +1,7 @@
+import { useSessionToken } from "@/lib/auth";
 import { useEffect, useState } from "react";
 
-import { getToken, type AgentStatus } from "@/lib/api";
+import { type AgentStatus } from "@/lib/api";
 
 export interface ActivityEntry {
   id: string;
@@ -21,8 +22,8 @@ const MAX_ENTRIES = 30;
 export function useAgentActivityFeed(): ActivityEntry[] {
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
 
+  const token = useSessionToken();
   useEffect(() => {
-    const token = getToken();
     if (!token) return;
 
     const source = new EventSource(`/api/ai/agents/stream?token=${encodeURIComponent(token)}`);
@@ -45,7 +46,7 @@ export function useAgentActivityFeed(): ActivityEntry[] {
     };
 
     return () => source.close();
-  }, []);
+  }, [token]);
 
   return entries;
 }

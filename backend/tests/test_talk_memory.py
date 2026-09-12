@@ -30,15 +30,15 @@ def test_binding_requires_exact_signed_identity_and_room():
 
 def test_signed_webhook_binds_owner_but_never_display_name():
     async def run(actor,room,valid=True):
-        payload={'type':'Create','actor':{'id':actor,'name':'Example User'},'target':{'id':room},
+        payload={'type':'Create','actor':{'id':actor,'name':'example-user'},'target':{'id':room},
                  'object':{'id':'1','name':'message','content':json.dumps({'message':'hello'})}}
         body=json.dumps(payload).encode();random='test-random'
         sig=hmac.new(b'test-only',random.encode()+body,hashlib.sha256).hexdigest() if valid else 'bad'
         async def receive():return {'type':'http.request','body':body}
         request=Request({'type':'http','headers':[(b'x-nextcloud-talk-random',random.encode()),(b'x-nextcloud-talk-signature',sig.encode()),(b'x-nextcloud-talk-backend',b'https://test')]},receive)
         db=MagicMock();db.execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda:SimpleNamespace(id=uuid.uuid4(),enabled=True)))
-        db.get=AsyncMock(return_value=SimpleNamespace(id=OWNER,is_active=True));db.commit=AsyncMock();db.refresh=AsyncMock()
-        with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[BINDING])),patch('app.api.routes.integrations._talk_secret',return_value='test-only'),patch('app.api.routes.integrations.get_celery_client'):
+        db.get=AsyncMock(side_effect=lambda model,key: SimpleNamespace(id=OWNER,is_active=True) if model.__name__=="User" else None);db.commit=AsyncMock();db.refresh=AsyncMock()
+        with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[BINDING])),patch('app.api.routes.integrations._talk_secret',return_value='test-only'),patch('app.api.routes.integrations.get_celery_client'),patch('app.api.routes.integrations._reply',new_callable=AsyncMock):
             if not valid:
                 try: await talk_webhook(request,db)
                 except HTTPException as exc: assert exc.status_code==401

@@ -16,6 +16,11 @@ PRIVATE_EXTENSIONS = {'.pem', '.key', '.p12', '.pfx', '.db', '.sqlite', '.sqlite
 
 # Visually reviewed public artwork. Pin bytes so replacements require a new review.
 REVIEWED_ARTWORK = {
+    "frontend/public/icons/apple-touch-icon.png": "8233b978a34ab33c8435512921af34036fe824a394252dc7e2bd6ea36c0b4a6b",
+    "frontend/public/icons/favicon-32.png": "dab29e244add883ec8373d90a945131ed4277fd5d649cad639c35a733810e1bc",
+    "frontend/public/icons/icon-192.png": "06b465a14660c99a309dbbc71c627555045f65f2ed60d8462f8f33ddfa8da85d",
+    "frontend/public/icons/icon-512.png": "6d5e56d76c5bb938e71372b60071c8d4568d7ea4a600ce343afcd6ede2946768",
+    "frontend/public/icons/maskable-512.png": "6d5e56d76c5bb938e71372b60071c8d4568d7ea4a600ce343afcd6ede2946768",
     "docs/images/ops-floor.gif": "3662d8036bbaba70e95627baa4adf634df4d56e291a251ec02951084d6695385",
 }
 

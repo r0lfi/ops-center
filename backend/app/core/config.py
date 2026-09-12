@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
 
     secrets_root: str = "/app/secrets"
+    wireguard_url: str = ""
+    wireguard_password_path: str = "integrations/wireguard-admin-password"
+    talk_backend_url: str = ""
+    talk_notifications_enabled: bool = False
     geoip_db_path: str = "/app/geoip/dbip-city-lite.mmdb"
 
     # Optional integrations are inactive until configured.
@@ -48,13 +52,8 @@ class Settings(BaseSettings):
     streamed_cameras: list[str] = Field(default_factory=list)
     camera_watchdog_targets: list[tuple[str, str]] = Field(default_factory=list)
     go2rtc_url: str = ""
-    wg_easy_url: str = ""
     unifi_url: str = ""
     unifi_verify_tls: bool = True
-    traffic_caddy_host: str = ""
-    traffic_npm_host: str = ""
-    traffic_caddy_log: str = "/var/log/caddy/access.log"
-    traffic_npm_log_dir: str = "/var/log/nginx-proxy-manager"
 
     # Nextcloud Talk bot (app/api/routes/integrations.py): the shared
     # secret registered with `occ talk:bot:install`, as a file under

@@ -29,6 +29,7 @@ from worker_ai.ai.tools.container_tools import (
     list_docker_networks,
 )
 from worker_ai.ai.tools.exec_tools import (
+    EXPAND_DISK_SCHEMA,
     CONTAINER_ACTION_SCHEMA,
     CONTAINER_EXEC_SCHEMA,
     REBOOT_HOST_SCHEMA,
@@ -89,6 +90,7 @@ TOOL_REGISTRY = {
 }
 
 TOOL_SCHEMAS = {
+    "expand_disk": EXPAND_DISK_SCHEMA,
     "get_server_metrics": _METRICS_SCHEMA,
     "get_alerts": _ALERTS_SCHEMA,
     "search_logs": _LOGS_SCHEMA,

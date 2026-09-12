@@ -48,7 +48,7 @@ def test_approved_action_does_not_execute_after_task_cancelled():
     db = MagicMock()
     action = SimpleNamespace(status="approved", task_id="task-id")
     db.get.return_value = action
-    db.execute.return_value.scalar_one_or_none.return_value = "cancelled"
+    db.execute.return_value.scalar_one_or_none.side_effect = [action, "cancelled"]
     with patch("worker_ai.tasks.SessionLocal") as session, patch("worker_ai.tasks.EXECUTORS") as executors:
         session.return_value.__enter__.return_value = db
         execute_action_task("action-id")

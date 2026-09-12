@@ -1,6 +1,7 @@
 import json
 
 import httpx
+from worker_ai.ai.transport import post
 
 from worker_ai.ai.providers.base import AIProvider, ProviderError, ProviderResult, ToolCall
 
@@ -19,7 +20,7 @@ class OpenAIProvider(AIProvider):
         ]
         wire_messages = [{"role": "system", "content": system}, *messages]
         try:
-            resp = httpx.post(
+            resp = post(
                 f"{self._base_url}/v1/chat/completions",
                 headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
                 json={

@@ -12,7 +12,7 @@ from worker_ai.tasks import _run_agent_task
 def test_database_failure_rolls_back_before_marking_task_failed():
     db = MagicMock()
     agent = SimpleNamespace(enabled=True)
-    task = SimpleNamespace(id="task-id", status="queued", agent=agent,
+    task = SimpleNamespace(id="task-id", status="queued", source="web", agent=agent,
                            conversation_key=None, input_message="request approval",
                            started_at=None, created_at=datetime.now(timezone.utc))
     db.execute.return_value.scalar_one_or_none.return_value = task

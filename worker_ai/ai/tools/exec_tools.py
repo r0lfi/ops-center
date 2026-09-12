@@ -24,6 +24,7 @@ AI_EXECUTABLE_PLAYBOOKS = ("patch-security.yml", "patch-all.yml")
 CONTAINER_ACTIONS = ("start", "stop", "restart")
 
 TOOL_APPROVAL_LEVEL = {
+    "expand_disk": 3,
     "restart_service": 2,
     "run_ansible_job": 2,
     "reboot_host": 3,
@@ -40,6 +41,7 @@ TOOL_APPROVAL_LEVEL = {
 }
 
 TOOL_RISK = {
+    "expand_disk": "high",
     "restart_service": "medium",
     "run_ansible_job": "medium",
     "reboot_host": "high",
@@ -80,7 +82,25 @@ def _label_container_exec(args: dict) -> str:
     return f"Run command in container {args.get('name')} on {args.get('hostname')}: {command[:100]}"
 
 
+def _label_expand_disk(args):
+    pve = f"; if VG space is insufficient, grow verified VM {args['vmid']} on {args['proxmox_host']}" if args.get("proxmox_host") else "; existing VG capacity only"
+    return (f"Expand {args.get('hostname')} {args.get('mount', '/data')} by {args.get('add_gib', 50)} GiB"
+            + pve + ". One workflow includes rescan, partition/PV/LV/filesystem growth and verification; storage reserve enforced.")
+
+EXPAND_DISK_SCHEMA = {
+    "name": "expand_disk",
+    "description": "Request ONE admin approval for the complete mounted LVM disk expansion. Default /data +50 GiB; honor an explicit requested size (GiB). Use existing free VG extents first; if insufficient, verify Proxmox VM/disk identity and physical storage reserve, then grow backing disk, guest partition/PV/LV and filesystem and verify final size. Supply known managed Proxmox hostname and VM ID when backing capacity may be needed. Never guess a mapping. Replaces separate shell approvals for every disk step, including verification. No shrink, no reboot; unsupported layouts fail closed. Never claim completion until the action/job verifies it. Do not request another expansion to retry an uncertain result.",
+    "parameters": {"type": "object", "additionalProperties": False, "properties": {
+        "hostname": {"type": "string"},
+        "mount": {"type": "string", "default": "/data"},
+        "add_gib": {"type": "integer", "minimum": 1, "maximum": 1024, "default": 50},
+        "proxmox_host": {"type": "string", "description": "Existing managed Proxmox node hostname"},
+        "vmid": {"type": "integer", "minimum": 100, "maximum": 999999999}
+    }, "required": ["hostname"]}
+}
+
 TOOL_ACTION_LABEL = {
+    "expand_disk": _label_expand_disk,
     "restart_service": _label_restart_service,
     "run_ansible_job": _label_run_ansible_job,
     "reboot_host": _label_reboot_host,
@@ -257,7 +277,10 @@ def execute_container_exec(arguments: dict) -> dict:
     }
 
 
+from worker_ai.disk_ops import execute_expand_disk
+
 EXECUTORS = {
+    "expand_disk": execute_expand_disk,
     "restart_service": execute_restart_service,
     "run_ansible_job": execute_run_ansible_job,
     "reboot_host": execute_reboot_host,

@@ -1,5 +1,8 @@
-import { Fragment } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
+  Search,
+  X,
+  ChevronLeft,
   Activity,
   AlertTriangle,
   Bell,
@@ -65,6 +68,8 @@ const NAV_ITEMS_AFTER_AI: NavItem[] = [
 
 const AI_AGENTS_SUB_ITEMS: NavItem[] = [
   { label: "Documentation", to: "/ai-agents/documentation", icon: FileText },
+  { label: "Collaboration board", to: "/ai-agents/collaboration", icon: Users },
+  { label: "Collaboration settings", to: "/ai-agents/collaboration/settings", icon: Cog },
   { label: "History & memory", to: "/ai-agents/memory", icon: FileText },
   { label: "Dashboard", to: "/ai-agents", icon: LayoutDashboard },
   { label: "Agents", to: "/ai-agents/agents", icon: Users },
@@ -77,98 +82,107 @@ const AI_AGENTS_SUB_ITEMS: NavItem[] = [
 
 interface SidebarProps {
   open: boolean;
+  onClose: () => void;
   onNavigate: () => void;
+  onSearchReady: (input: HTMLInputElement | null) => void;
 }
 
-function NavRow({ label, to, icon: Icon, onNavigate, end, indent }: NavItem & { onNavigate: () => void; end?: boolean; indent?: boolean }) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      onClick={onNavigate}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-          indent && "py-1.5 pl-9 text-[13px]",
-          isActive && "bg-accent text-foreground ring-1 ring-primary/40",
-        )
-      }
-    >
-      <Icon className={indent ? "h-3.5 w-3.5" : "h-4 w-4"} />
-      {label}
-    </NavLink>
-  );
-}
+const GROUPS = [
+  { label: "Operations and monitoring", items: [...NAV_ITEMS_BEFORE_AI,
+    { label: "Patch Reports", to: "/patching/reports", icon: ClipboardList },
+    { label: "Playbook Library", to: "/automation/playbooks", icon: FileText }] },
+  { label: "AI Agents", items: [
+    { label: "Ask Ops AI / Chat", to: "/ai-agents/chat", icon: Sparkles }, ...AI_AGENTS_SUB_ITEMS] },
+  { label: "Platform and administration", items: [...NAV_ITEMS_AFTER_AI,
+    { label: "List all containers", to: "/containers/all", icon: ListChecks }] },
+];
 
-export function Sidebar({ open, onNavigate }: SidebarProps) {
+export function Sidebar({ open, onClose, onNavigate, onSearchReady }: SidebarProps) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const aiSectionActive = location.pathname.startsWith("/ai-agents");
+  const [query, setQuery] = useState("");
+  const panel = useRef<HTMLElement>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const needle = query.trim().toLocaleLowerCase();
+  const groups = GROUPS.map(group => ({ ...group, items: group.items.filter(item =>
+    `${group.label} ${item.label} ${item.to}`.toLocaleLowerCase().includes(needle))
+  })).filter(group => group.items.length);
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      panel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        previous?.focus();
+      }
+      if (event.key !== "Tab" || !window.matchMedia("(max-width: 767px)").matches) return;
+      const elements = panel.current?.querySelectorAll<HTMLElement>('a[href], button, input');
+      if (!elements?.length) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  function finishDrag(event: PointerEvent<HTMLElement>) {
+    const origin = start.current;
+    if (origin && origin.x - event.clientX > 65 && Math.abs(origin.y - event.clientY) < 60) {
+      start.current = null;
+      onClose();
+    }
+  }
 
   return (
-    <aside
-      className={cn(
-        "fixed inset-y-0 left-0 z-50 flex h-screen w-60 shrink-0 -translate-x-full flex-col border-r border-border bg-card transition-transform duration-200 ease-in-out md:static md:translate-x-0",
-        open && "translate-x-0",
-      )}
-    >
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />
-        <div className="leading-tight">
-          <div className="text-sm font-semibold tracking-wide">Ops Center</div>
-          <div className="text-[11px] text-muted-foreground">Infrastructure management</div>
+    <aside ref={panel} id="ops-navigation" aria-label="Main navigation" aria-hidden={!open}
+      className={cn("fixed inset-y-0 left-0 z-50 flex h-dvh w-72 max-w-[85vw] flex-col border-r border-primary/10 bg-card shadow-2xl shadow-black/30 transition-[transform,visibility] duration-200 motion-reduce:transition-none",
+        open ? "visible translate-x-0" : "invisible -translate-x-full")}
+      onPointerDown={event => { start.current = { x: event.clientX, y: event.clientY }; }}
+      style={{ touchAction: "pan-y" }} onPointerMove={finishDrag}
+      onPointerUp={event => { finishDrag(event); start.current = null; }} onPointerCancel={() => { start.current = null; }}>
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-border/60 px-5">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl border border-primary/20 bg-primary/10 p-2"><ShieldCheck className="h-5 w-5 text-primary" /></div>
+          <div><div className="text-sm font-semibold tracking-wide">Ops Center</div><div className="text-[11px] text-muted-foreground">Infrastructure management</div></div>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close menu" title="Close or drag the menu to the left"
+          className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"><ChevronLeft className="h-5 w-5" /></button>
+      </div>
+      <div className="shrink-0 px-4 pb-2 pt-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <input ref={onSearchReady} type="search" value={query} onChange={event => setQuery(event.target.value)} aria-label="Search menu"
+            placeholder="Search all features …" className="h-10 w-full rounded-xl border border-border bg-background/60 pl-9 pr-9 text-sm outline-none placeholder:text-muted-foreground focus:border-primary/60 focus:ring-2 focus:ring-primary/10" />
+          {query && <button type="button" onClick={() => setQuery("")} aria-label="Clear menu search" className="absolute right-1 top-1 rounded-lg p-2 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>}
         </div>
       </div>
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {NAV_ITEMS_BEFORE_AI.map((item) => (
-          <Fragment key={item.to}>
-            <NavRow {...item} onNavigate={onNavigate} end={item.to === "/" || item.to === "/patching" || item.to === "/automation"} />
-            {item.to === "/automation" && <NavRow label="Playbook Library" to="/automation/playbooks" icon={FileText} onNavigate={onNavigate} indent />}
-            {item.to === "/patching" && <NavRow label="Reports" to="/patching/reports" icon={ClipboardList} onNavigate={onNavigate} indent />}
-          </Fragment>
-        ))}
-
-        <div>
-          <NavLink
-            to="/ai-agents"
-            onClick={onNavigate}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-foreground",
-              aiSectionActive ? "bg-accent text-foreground ring-1 ring-primary/40" : "text-muted-foreground",
-            )}
-          >
-            <Sparkles className="h-4 w-4" />
-            AI Agents
-          </NavLink>
-          {aiSectionActive && (
-            <div className="mt-0.5 space-y-0.5 border-l border-border pl-1">
-              {AI_AGENTS_SUB_ITEMS.map((item) => (
-                <NavRow key={item.to} {...item} onNavigate={onNavigate} end={item.to === "/ai-agents"} indent />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {NAV_ITEMS_AFTER_AI.map((item) => (
-          <Fragment key={item.to}>
-            <NavRow {...item} onNavigate={onNavigate} end={item.to === "/containers"} />
-            {item.to === "/containers" && <NavRow label="List all containers" to="/containers/all" icon={ListChecks} onNavigate={onNavigate} indent />}
-          </Fragment>
-        ))}
+      <nav aria-label="Features" className="ops-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 pb-6 pt-3" style={{ touchAction: "pan-y" }}>
+        {groups.map(group => <section key={group.label} aria-label={group.label}>
+          <h2 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</h2>
+          <div className="space-y-1">{group.items.map(({ label, to, icon: Icon }) => {
+            const active = location.pathname === to || (to === "/servers" && location.pathname.startsWith("/servers/"));
+            return <NavLink key={to} to={to} end onClick={onNavigate}
+              className={cn("group flex items-center gap-3 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                active ? "border-primary/20 bg-primary/10 text-primary shadow-sm" : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-accent/60 hover:text-foreground")}>
+              <Icon className="h-4 w-4 shrink-0" /><span>{label}</span>
+              {active && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
+            </NavLink>;
+          })}</div>
+        </section>)}
+        {!groups.length && <p role="status" className="px-3 py-6 text-sm text-muted-foreground">No results. Try another search term.</p>}
       </nav>
-      <div className="border-t border-border p-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium text-foreground">{user?.username}</p>
-            <p className="text-xs text-muted-foreground">{user?.role}</p>
-          </div>
-          <button
-            onClick={logout}
-            title="Sign out"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+      <div className="shrink-0 border-t border-border/60 bg-background/30 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold uppercase text-primary">{user?.username?.slice(0, 2)}</div>
+          <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium">{user?.username}</p><p className="text-[11px] text-muted-foreground">{user?.role}</p></div>
+          <button type="button" onClick={logout} aria-label="Sign out" title="Sign out" className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"><LogOut className="h-4 w-4" /></button>
         </div>
       </div>
     </aside>

@@ -592,6 +592,46 @@ Ideas and contributions are welcome.
 
 ---
 
+## Progressive Web App
+
+Ops Center still works as a normal responsive website. Installation is optional:
+use Chrome/Edge's install command or **Install Ops Center** when available. On
+iPhone/iPad use Safari → Share → Add to Home Screen, enabling **Open as Web App**
+if offered. The installed app opens standalone and uses the same backend/API.
+
+Production requires HTTPS; localhost is supported for testing. The Vite/Workbox
+service worker caches build assets and an explicit offline page, never APIs,
+credentials or live infrastructure status. Updates wait for the user's **Reload**.
+Keep HTML/service-worker revalidation and SPA fallback rules when adding a reverse
+proxy. Test with `npm ci`, `npm run build` and `npm test` in `frontend` after
+installing Playwright browsers. See [PWA behavior and deployment](docs/pwa.md).
+
+## Configure your own monitoring
+
+A fresh installation contains no monitored servers or trusted origins. Register
+servers and managed credentials, complete SSH onboarding, then open **Settings →
+Traffic Map & authentication**. Add NPM/Caddy logs, application audit logs,
+OpenSSH journals or WireGuard interfaces, and choose retention and login trust
+rules. Source labels, filters and map destinations follow your configuration.
+
+Successful SSH logins trust only current configured DNS addresses; application
+and VPN logins can also trust selected countries. Failed SSH authentication is
+off by default. Authentication notices appear on Traffic Map and can be delivered
+to configured administrator Talk rooms. Read [Traffic Map setup](docs/traffic-map.md)
+and [optional integrations](docs/integrations.md) before enabling collection.
+
+Provider settings, host scopes and collaboration budgets remain editable in the
+AI pages. Database, ingress, camera/VPN/Talk connections and secret-file locations
+are deployment settings documented in `.env.example`; secrets and generated
+inventories stay outside Git. Optional [collaboration](docs/agent-collaboration.md)
+and [single-approval disk expansion](docs/disk-expansion.md) are included.
+
+**Upgrade:** apply migrations through `0041` and configure Traffic Map's database
+settings before relying on collectors. Legacy source environment variables are
+not auto-imported. Review the [upgrade details](docs/traffic-map.md#upgrade-and-testing).
+
+---
+
 ## 🤝 Contributing
 
 Contributions, testing and feedback are welcome.

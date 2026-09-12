@@ -2,10 +2,11 @@
 app/api/routes/logs.py (kept as its own tiny copy, see metrics_tools.py's
 docstring for why)."""
 import time
+import os
 
 import httpx
 
-LOKI_URL = "http://loki:3100"
+LOKI_URL = os.environ.get("LOKI_URL", "http://loki:3100")
 _MAX_LINES_TO_MODEL = 40
 
 

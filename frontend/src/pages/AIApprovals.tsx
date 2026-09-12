@@ -9,6 +9,7 @@ import { api, type AIAction } from "@/lib/api";
 const ACTION_STATUS_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = {
   pending: "warning",
   approved: "unknown",
+  executing: "unknown",
   rejected: "unknown",
   executed: "ok",
   failed: "critical",
@@ -79,7 +80,7 @@ export default function AIApprovals() {
                 <li>Ask for the action in Talk or web chat. The agent may clarify whether you mean a full host reboot or a specific service restart.</li>
                 <li>The agent calls an approval-gated tool. Ops Center creates a pending request with an ACT request code; the action has not run.</li>
                 <li>The agent is instructed to reply that approval is required and include the code. Match that code to the request in this table.</li>
-                <li>Click <strong className="text-foreground">Approve</strong> to queue execution, or <strong className="text-foreground">Reject</strong> to decline. Saying “yes” or “approved” in chat does not approve the request.</li>
+                <li>Click <strong className="text-foreground">Approve</strong> to queue execution, or <strong className="text-foreground">Reject</strong> to decline. In a linked private Talk room, use <code>godkjenn ACT-...</code> or <code>avvis ACT-...</code>. Saying “yes” alone never approves a request.</li>
               </ol>
               <p>
                 Requests must be approved within <strong className="text-foreground">15 minutes</strong> of creation.

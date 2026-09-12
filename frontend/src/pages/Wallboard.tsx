@@ -1,9 +1,11 @@
-import { ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, ShieldCheck, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { MetricSparkline } from "@/components/monitoring/MetricSparkline";
 import { ServiceStatusGrid } from "@/components/monitoring/ServiceStatusGrid";
 import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { api, type Host, type HostMetricsResponse, type ServiceStatus } from "@/lib/api";
 import { formatBytesPerSec } from "@/lib/format";
 
@@ -61,8 +63,8 @@ export default function Wallboard() {
   const focusedHost = hosts.find((h) => h.hostname === focused) ?? null;
 
   return (
-    <div className="min-h-screen space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="min-h-screen space-y-6 p-3 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <ShieldCheck className="h-6 w-6 text-primary" />
           <h1 className="text-xl font-semibold tracking-wide">Ops Center Wallboard</h1>
@@ -71,7 +73,13 @@ export default function Wallboard() {
             live
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" asChild>
+            <Link to="/monitoring">
+              <ArrowLeft className="mr-1.5 h-4 w-4" />
+              Back to Monitoring
+            </Link>
+          </Button>
           <Select
             value={focused ?? ""}
             onChange={(e) => setFocused(e.target.value || null)}

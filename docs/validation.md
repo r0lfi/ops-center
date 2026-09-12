@@ -41,3 +41,72 @@ independent machines. It does not validate physical host loss, network partition
 firewall policy, external HTTPS ingress, shared-file synchronization, or the full
 Ansible installation on clean servers. Follow the failover checklist in
 [the HA guide](ha.md) before deployment.
+
+
+## Portable monitoring and PWA update — 2026-09-13
+
+The current public source was validated separately from production:
+
+- 280 backend/AI/release tests passed with a disposable collaboration database
+  and the real Ansible interpreter using mock disk helpers. Worker and security
+  suites added 8 and 10 passing tests: **298 Python tests in total**.
+- The public test script also passed using fresh, component-specific virtual
+  environments. Its default run skips 17 optional collaboration database tests;
+  those tests passed separately with `COLLAB_TEST_DATABASE_URL` configured.
+- All 41 Alembic revisions applied successfully to an empty PostgreSQL 17 database.
+  Rollback-only traffic integration tests verified source isolation, history
+  filters, cursor/event atomicity, retention/caps, cross-connection locks and a
+  mocked Talk outbox, including disabled-source suppression and immediate auth
+  notification eligibility. No real Talk messages were sent by validation.
+- 65 distinct Playwright cases were checked across desktop, mobile/tablet Chrome
+  and iPad WebKit. One Settings-label failure was corrected and the affected
+  three-case suite passed again on both engines. Coverage includes configured
+  sources, standalone/browser routes, iOS installation help, offline state,
+  explicit update activation, API cache exclusion, WebSocket/SSE, token renewal,
+  and authentication banners which scroll out in both page and wallboard views.
+- TypeScript/Vite production build passed. ESLint reported zero errors and seven
+  existing Ops Floor/chat/log hook/directive warnings. The existing large-bundle
+  performance warning remains. npm audit reported **zero known vulnerabilities**
+  after compatible updates to React Router, Drei, Vite, PostCSS and ESLint.
+- API, Ansible worker, AI worker, security worker and frontend images built with
+  isolated validation tags. API and AI-worker import checks passed with synthetic
+  environment settings and networking disabled. The final frontend container
+  returned HTTP 200 for direct wallboard routes, the manifest and service worker;
+  manifest MIME type and no-cache entry-point headers were verified.
+- All 35 application playbooks and the installer passed Ansible syntax checks;
+  Compose validation passed with synthetic configuration. Public HA-generation
+  tests passed and existing public HA/installer logic was retained.
+- Release policy, staged Gitleaks and source-deployment-marker checks passed.
+  A value-only comparison against seven private environment secrets found no
+  public-source matches; no secret values were printed. PWA PNGs were visually
+  reviewed and pinned by exact path and SHA-256 in the release policy.
+
+These checks did not deploy this revision to production, expand a real disk,
+install on a physical iPad, or perform a full clean-VM installation. Use the
+existing installer/HA runbooks to validate your own host, firewall, TLS, storage
+and external integrations. This is not a comprehensive security audit.
+
+### Reproduce
+
+```bash
+bash scripts/test/run-tests.sh
+cd frontend
+npm ci
+npm run lint
+npm run build
+npx playwright install --with-deps chromium webkit
+npm test
+npm audit
+```
+
+For the database checks, create disposable databases and set
+`TEST_TRAFFIC_DATABASE_URL` for `backend/tests/verify_traffic_postgres.py` and
+`COLLAB_TEST_DATABASE_URL` for `worker_ai/tests/test_collaboration.py`. The latter
+refuses any database whose name is not `ops_collaboration_test`; it drops/recreates
+its test tables. Set `OPS_TEST_ANSIBLE_PLAYBOOK` when the Ansible interpreter is
+not on PATH. Public CI runs these tests with synthetic service credentials.
+
+Before publishing, stage only reviewed sources, run `python scripts/check-release.py`
+and `gitleaks git --staged --redact`, then commit. `python scripts/package.py
+/tmp/ops-center-source.tar.gz` packages indexed source files without Git history,
+local settings, credentials, installed dependencies or runtime/test artifacts.

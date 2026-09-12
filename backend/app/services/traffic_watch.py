@@ -1,370 +1,332 @@
-"""Optional SSH log collection for the traffic map. Configure source hosts explicitly."""
+"""Durable configurable collectors, reconciled on every API node.
+
+The database is the source of truth. A per-source transaction lock prevents two
+HA nodes from committing the same read concurrently. Credentials and host-key
+pins come only from onboarded Host records, never from log or settings input.
+"""
 
 import asyncio
+import hashlib
 import ipaddress
 import json
 import logging
-import re
 import shlex
 import time
-import uuid
-from collections import deque
-from dataclasses import asdict, dataclass
 from pathlib import Path
-
 import asyncssh
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import selectinload
-
 from app.core.config import get_settings
 from app.db.session import async_session_factory
 from app.models.host import Host
-from app.services.connectivity import _resolve_secret
+from app.models.traffic import TrafficCollector
+from app.services.connectivity import _resolve_secret, _PinnedHostKeyClient
 from app.services.redis_client import get_redis_client
+from app.services.traffic_settings import load_config, enabled_sources
 
 logger = logging.getLogger("traffic_watch")
-
-POLL_INTERVAL = 3.0
-RECONNECT_DELAY = 15.0
-MAX_EVENTS = 1000
-HOME_DEST_REFRESH_S = 6 * 3600
 REDIS_SNAPSHOT_KEY = "traffic_watch:snapshot"
-# Generous vs. POLL_INTERVAL - a brief Redis blip shouldn't blank out
-# worker_ai's Network Agent tool (see that tool's docstring) between ticks.
 REDIS_SNAPSHOT_TTL = 300
-_SNAPSHOT_EVENT_COUNT = 100
-# NPM's proxy-host-*_access.log set changes as hosts are added/removed -
-# re-glob occasionally rather than every tick (cheap, but no need every 3s).
-NPM_REGLOB_EVERY_N_TICKS = 20
-
-_NPM_LOG_RE = re.compile(
-    r'^\[[^\]]*\]\s+\S+\s+\S+\s+(?P<status>\d+)\s+-\s+\S+\s+\S+\s+'
-    r'(?P<domain>\S+)\s+"[^"]*"\s+\[Client\s+(?P<ip>[^\]]+)\]'
-)
+_tasks = set()
+_running = {}
+_geoip_reader = None
 
 
-@dataclass
-class TrafficEvent:
-    id: str
-    ts: float
-    ip: str
-    lat: float | None
-    lon: float | None
-    city: str | None
-    country: str | None
-    domain: str
-    status: int | None
-    source: str  # "edge-host" | "home"
-    suspicious: bool
+def _geolocate(ip):
+    global _geoip_reader
+    if _geoip_reader is None:
+        path = Path(get_settings().geoip_db_path)
+        if not path.is_file():
+            return None, None, None, None
+        import maxminddb
 
-
-class _State:
-    events: deque[TrafficEvent] = deque(maxlen=MAX_EVENTS)
-    dest_points: dict[str, dict] = {}
-    geoip_reader = None
-    geoip_load_failed = False
-
-
-_state = _State()
-
-
-def _load_geoip():
-    if _state.geoip_reader is not None or _state.geoip_load_failed:
-        return _state.geoip_reader
-    import maxminddb
-
-    path = Path(get_settings().geoip_db_path)
-    if not path.exists():
-        logger.warning("GeoIP database not found at %s - Traffic Map will show no locations", path)
-        _state.geoip_load_failed = True
-        return None
+        _geoip_reader = maxminddb.open_database(str(path))
     try:
-        _state.geoip_reader = maxminddb.open_database(str(path))
-    except Exception:
-        logger.exception("failed to open GeoIP database at %s", path)
-        _state.geoip_load_failed = True
-    return _state.geoip_reader
-
-
-def _geolocate(ip: str) -> tuple[float | None, float | None, str | None, str | None]:
-    reader = _load_geoip()
-    if reader is None:
-        return None, None, None, None
-    try:
-        record = reader.get(ip)
-    except Exception:
-        return None, None, None, None
-    if not record:
-        return None, None, None, None
-    location = record.get("location") or {}
-    city = (record.get("city") or {}).get("names", {}).get("en")
-    country = (record.get("country") or {}).get("names", {}).get("en")
-    return location.get("latitude"), location.get("longitude"), city, country
-
-
-def _is_private_ip(ip: str) -> bool:
-    """LAN clients (RFC1918, loopback, link-local, ULA) hitting a proxy on
-    its internal address - own devices reaching Jellyfin/Ops Center itself
-    from inside the house, health checks, etc. Not "traffic from outside"
-    in the sense this map is for, so these are dropped before ever
-    becoming an event rather than shown as an "unknown" location."""
-    try:
-        return ipaddress.ip_address(ip).is_private
+        record = _geoip_reader.get(ip) or {}
     except ValueError:
-        return True  # unparseable - never show it rather than risk a bad plot
+        return None, None, None, None
+    location = record.get("location", {})
+    return (
+        location.get("latitude"),
+        location.get("longitude"),
+        record.get("city", {}).get("names", {}).get("en"),
+        record.get("country", {}).get("names", {}).get("en"),
+    )
 
 
-def _is_suspicious(status: int | None) -> bool:
-    """4xx/5xx only - a real Jellyfin session alone routinely fires 20+
-    requests within a few seconds (progress pings, thumbnails, playback
-    stats), so a request-volume threshold flagged completely normal single-
-    user traffic as suspicious. Status is a much more direct signal for
-    what this is actually meant to catch (scans, probing, broken/bruteforce
-    auth attempts) and doesn't get noisier just because someone is
-    legitimately using the app a lot."""
+def _is_private_ip(ip):
+    try:
+        return not ipaddress.ip_address(ip).is_global
+    except ValueError:
+        return True
+
+
+def _is_suspicious(status):
     return status is not None and status >= 400
 
 
-def _record(ip: str, domain: str, status: int | None, source: str) -> None:
-    if _is_private_ip(ip):
-        return
-    lat, lon, city, country = _geolocate(ip)
-    event = TrafficEvent(
-        id=uuid.uuid4().hex,
-        ts=time.time(),
-        ip=ip,
-        lat=lat,
-        lon=lon,
-        city=city,
-        country=country,
-        domain=domain,
-        status=status,
-        source=source,
-        suspicious=_is_suspicious(status),
-    )
-    _state.events.append(event)
-    logger.debug(
-        "traffic event: %s (%s) -> %s status=%s suspicious=%s", ip, city, source, status, event.suspicious
-    )
-
-
 class _RemoteTail:
-    """One persistent SSH connection to one host, reconnected on failure."""
+    def __init__(self, host):
+        self.host = host
+        self.conn = None
 
-    def __init__(self, ip: str, port: int, username: str, key_path: Path):
-        self.ip = ip
-        self.port = port
-        self.username = username
-        self.key_path = key_path
-        self._conn: asyncssh.SSHClientConnection | None = None
-
-    async def _ensure_connected(self) -> asyncssh.SSHClientConnection:
-        if self._conn is not None:
-            return self._conn
-        client_key = asyncssh.import_private_key(self.key_path.read_text())
-        self._conn = await asyncssh.connect(
-            host=self.ip,
-            port=self.port,
-            username=self.username,
-            client_keys=[client_key],
-            known_hosts=None,
-            connect_timeout=8,
-        )
-        return self._conn
-
-    async def run(self, command: str) -> str:
-        conn = await self._ensure_connected()
-        try:
-            result = await conn.run(command, check=False, timeout=10)
-        except (OSError, asyncssh.Error, asyncio.TimeoutError):
-            self._conn = None
-            raise
-        return result.stdout or ""
-
-
-async def _poll_caddy(tail: _RemoteTail, offsets: dict[str, int], _tick: int) -> None:
-    path = shlex.quote(get_settings().traffic_caddy_log)
-    offset = offsets.get(path, None)
-    if offset is None:
-        size_out = await tail.run(f"sudo -n stat -c%s {path} 2>/dev/null || echo 0")
-        offsets[path] = int(size_out.strip() or 0)
-        return
-
-    size_out = await tail.run(
-        f"sz=$(sudo -n stat -c%s {path} 2>/dev/null || echo 0); "
-        f"[ \"$sz\" -lt {offset} ] && off=0 || off={offset}; "
-        f"sudo -n tail -c +$((off+1)) {path} 2>/dev/null; "
-        f"echo ---OPS-EOF-$sz---"
-    )
-    content, _, _marker = size_out.rpartition("---OPS-EOF-")
-    new_size = int(_marker.rstrip("-\n") or offset)
-    offsets[path] = new_size
-
-    for line in content.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        request = record.get("request", {})
-        ip = request.get("client_ip") or request.get("remote_ip")
-        domain = request.get("host")
-        status = record.get("status")
-        if ip and domain:
-            _record(ip, domain, status, "edge-host")
-
-
-async def _poll_npm(tail: _RemoteTail, offsets: dict[str, int], tick: int) -> None:
-    log_dir = shlex.quote(get_settings().traffic_npm_log_dir)
-    if tick % NPM_REGLOB_EVERY_N_TICKS == 0:
-        listing = await tail.run(f"ls -1 {log_dir}/proxy-host-*_access.log 2>/dev/null")
-        for path in listing.splitlines():
-            path = path.strip()
-            if path and path not in offsets:
-                size_out = await tail.run(f"stat -c%s {path} 2>/dev/null || echo 0")
-                offsets[path] = int(size_out.strip() or 0)
-
-    for path, offset in list(offsets.items()):
-        out = await tail.run(
-            f"sz=$(stat -c%s {path} 2>/dev/null || echo 0); "
-            f"[ \"$sz\" -lt {offset} ] && off=0 || off={offset}; "
-            f"tail -c +$((off+1)) {path} 2>/dev/null; "
-            f"echo ---OPS-EOF-$sz---"
-        )
-        content, _, marker = out.rpartition("---OPS-EOF-")
-        offsets[path] = int(marker.rstrip("-\n") or offset)
-
-        for line in content.splitlines():
-            match = _NPM_LOG_RE.match(line)
-            if not match:
-                continue
-            ip = match.group("ip").strip()
-            domain = match.group("domain")
-            status = int(match.group("status"))
-            _record(ip, domain, status, "home")
-
-
-async def _resolve_home_dest(tail: _RemoteTail) -> None:
-    """Geolocates the home network's own public IP (via a domain that only
-    resolves to it) so the map has somewhere to draw arcs landing at "home" -
-    reuses the same local GeoIP database rather than asking the user for
-    coordinates, so it's exactly as precise as what an external visitor's
-    own geolocation would show for this network, no more."""
-    try:
-        out = await tail.run("curl -s --max-time 5 https://ipinfo.io/ip || true")
-        ip = out.strip()
-        if not ip:
-            return
-        lat, lon, city, country = _geolocate(ip)
-        if lat is not None and lon is not None:
-            _state.dest_points["home"] = {"lat": lat, "lon": lon, "city": city, "country": country}
-    except (OSError, asyncssh.Error, asyncio.TimeoutError):
-        logger.warning("could not resolve home's public IP for the Traffic Map destination pin")
-
-
-async def _publish_snapshot() -> None:
-    """Lets worker_ai's Network Agent (a separate process/container with no
-    access to this module's in-memory state) read a recent view of it - see
-    worker_ai/ai/tools/network_tools.py. Best-effort only: this is a
-    visualization/AI-tool feature, never allowed to affect the poll loop
-    that calls it."""
-    try:
-        redis_client = get_redis_client()
-        payload = json.dumps(
-            {
-                "events": [asdict(e) for e in list(_state.events)[-_SNAPSHOT_EVENT_COUNT:]],
-                "destinations": _state.dest_points,
+    async def run(self, command):
+        if self.conn is None:
+            h = self.host
+            if not h.credential or not h.ssh_host_fingerprint:
+                raise ValueError(
+                    "Complete managed SSH onboarding before enabling this source"
+                )
+            secret = _resolve_secret(h.credential.secret_path)
+            kwargs = {
+                "host": h.ip_address,
+                "port": h.ssh_port,
+                "username": h.ssh_user,
+                # Explicit empty known-hosts list invokes our fingerprint validator. None
+                # would disable host-key validation in AsyncSSH.
+                "known_hosts": [],
+                "config": None,
+                "client_factory": lambda: _PinnedHostKeyClient(h.ssh_host_fingerprint),
+                "connect_timeout": 8,
             }
-        )
-        await redis_client.set(REDIS_SNAPSHOT_KEY, payload, ex=REDIS_SNAPSHOT_TTL)
-    except Exception:
-        logger.debug("traffic_watch: failed to publish Redis snapshot", exc_info=True)
+            if h.credential.credential_type == "ssh_key":
+                kwargs["client_keys"] = [
+                    asyncssh.import_private_key(secret.read_text())
+                ]
+            elif h.credential.credential_type == "ssh_password":
+                kwargs.update(password=secret.read_text().strip(), client_keys=[])
+            else:
+                raise ValueError("Unsupported managed credential type")
+            self.conn = await asyncssh.connect(**kwargs)
+        result = await self.conn.run(command, check=False, timeout=30)
+        if result.exit_status != 0:
+            raise RuntimeError(
+                "Remote reader failed; check configured path, format and sudo permissions"
+            )
+        if len(result.stdout) > 8 * 1024 * 1024:
+            raise ValueError("Remote result exceeds collection limit")
+        return result.stdout
+
+    async def close(self):
+        if self.conn:
+            self.conn.close()
+            await self.conn.wait_closed()
+            self.conn = None
 
 
-async def _source_loop(name: str, tail: _RemoteTail, poll_fn) -> None:
-    offsets: dict[str, int] = {}
-    tick = 0
+async def _collect(tail, source, checkpoint):
+    config = source.model_dump(mode="json")
+    config["hostname"] = tail.host.hostname
+    names = {"ssh": "traffic_ssh_reader.py", "wireguard": "traffic_wireguard_reader.py"}
+    reader = (
+        Path(__file__)
+        .with_name(names.get(source.kind, "traffic_reader.py"))
+        .read_text()
+    )
+    request = (
+        config
+        if source.kind == "wireguard"
+        else {"source": source.kind, "config": config, "checkpoint": checkpoint}
+    )
+    command = (
+        ("sudo -n " if source.use_sudo else "")
+        + "python3 -c "
+        + shlex.quote(reader)
+        + " "
+        + shlex.quote(json.dumps(request))
+    )
+    return json.loads(await tail.run(command))
+
+
+async def _publish_snapshot():
+    from app.services.traffic_store import recent
+
+    payload = await recent(time.time() - 86400)
+    payload["events"] = payload["events"][:100]
+    await get_redis_client().set(
+        REDIS_SNAPSHOT_KEY, json.dumps(payload), ex=REDIS_SNAPSHOT_TTL
+    )
+
+
+async def _source_loop(source, host, signature):
+    from app.services.traffic_store import save_batch
+
+    tail = _RemoteTail(host)
+    interval = 15 if source.kind == "wireguard" else 5
+    lock = int.from_bytes(
+        hashlib.sha256(source.id.encode()).digest()[:4], "big", signed=True
+    )
+    try:
+        while True:
+            try:
+                async with async_session_factory() as db, db.begin():
+                    locked = await db.scalar(
+                        text("SELECT pg_try_advisory_xact_lock(73810,:key)"),
+                        {"key": lock},
+                    )
+                    if locked:
+                        cursor = await db.get(TrafficCollector, source.id)
+                        cp = (
+                            cursor.checkpoint
+                            if cursor
+                            and cursor.checkpoint.get("signature") == signature
+                            else {}
+                        )
+                        if (
+                            not cp
+                            or not cursor.last_success
+                            or time.time() - cursor.last_success >= interval
+                        ):
+                            # Configuration edits start from the new source's current
+                            # log tail; old authentication events are never replayed.
+                            since = cp.get("since", time.time())
+                            result = await _collect(tail, source, cp)
+                            now = time.time()
+                            events = []
+                            for row in result["events"]:
+                                if not since <= row["ts"] <= now + 60:
+                                    continue
+                                if source.kind not in (
+                                    "ssh",
+                                    "auth_audit",
+                                ) and _is_private_ip(row["ip"]):
+                                    continue
+                                lat, lon, city, country = _geolocate(row["ip"])
+                                row.update(
+                                    source=source.id,
+                                    lat=lat,
+                                    lon=lon,
+                                    city=city,
+                                    country=country,
+                                    suspicious=_is_suspicious(row["status"])
+                                    or row.get("signal")
+                                    in ("auth_failure", "auth_throttled"),
+                                )
+                                events.append(row)
+                            checkpoint = result["checkpoint"]
+                            checkpoint.update(signature=signature, since=since)
+                            if host.latitude is not None and host.longitude is not None:
+                                checkpoint["destinations"] = {
+                                    source.id: {
+                                        "lat": host.latitude,
+                                        "lon": host.longitude,
+                                        "city": None,
+                                        "country": None,
+                                        "label": source.label,
+                                    }
+                                }
+                            await save_batch(db, source.id, events, checkpoint, now)
+                await _publish_snapshot()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await tail.close()
+                logger.warning(
+                    "Traffic source %s failed; checkpoint retained", source.id
+                )
+                async with async_session_factory() as db, db.begin():
+                    await db.execute(
+                        insert(TrafficCollector)
+                        .values(
+                            name=source.id,
+                            checkpoint={},
+                            last_error="Source unavailable: check SSH onboarding, log path and reader permissions",
+                        )
+                        .on_conflict_do_update(
+                            index_elements=["name"],
+                            set_={
+                                "last_error": "Source unavailable: check SSH onboarding, log path and reader permissions"
+                            },
+                        )
+                    )
+            await asyncio.sleep(interval)
+    finally:
+        await tail.close()
+
+
+async def _supervise():
     while True:
         try:
-            await poll_fn(tail, offsets, tick)
-        except (OSError, asyncssh.Error, asyncio.TimeoutError) as exc:
-            logger.warning("traffic_watch: %s poll failed (%s), reconnecting in %ss", name, exc, RECONNECT_DELAY)
-            await asyncio.sleep(RECONNECT_DELAY)
-            continue
+            config = await load_config()
+            sources = enabled_sources(config)
+            async with async_session_factory() as db:
+                hosts = (
+                    (
+                        await db.execute(
+                            select(Host)
+                            .where(Host.id.in_([s.host_id for s in sources]))
+                            .options(selectinload(Host.credential))
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+            hosts = {h.id: h for h in hosts}
+            desired = {}
+            for source in sources:
+                host = hosts.get(source.host_id)
+                if host is None:
+                    continue
+                identity = [
+                    source.model_dump(mode="json"),
+                    host.ip_address,
+                    host.ssh_port,
+                    host.ssh_user,
+                    host.ssh_host_fingerprint,
+                    str(host.credential_id),
+                    host.latitude,
+                    host.longitude,
+                ]
+                signature = hashlib.sha256(
+                    json.dumps(identity, sort_keys=True).encode()
+                ).hexdigest()
+                desired[source.id] = (source, host, signature)
+            for name, (signature, task) in list(_running.items()):
+                if name not in desired or desired[name][2] != signature or task.done():
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    del _running[name]
+            for name, (source, host, signature) in desired.items():
+                if name not in _running:
+                    _running[name] = (
+                        signature,
+                        asyncio.create_task(_source_loop(source, host, signature)),
+                    )
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            logger.exception("traffic_watch: unexpected error polling %s", name)
-        await _publish_snapshot()
-        tick += 1
-        await asyncio.sleep(POLL_INTERVAL)
+            logger.exception("Traffic configuration could not be reconciled")
+        await asyncio.sleep(10)
 
 
-async def _load_host_connection(hostname: str) -> _RemoteTail | None:
-    async with async_session_factory() as db:
-        result = await db.execute(
-            select(Host).where(Host.hostname == hostname).options(selectinload(Host.credential))
-        )
-        host = result.scalar_one_or_none()
-    if host is None or host.credential is None:
-        logger.warning("traffic_watch: host %s or its credential is not configured - skipping", hostname)
-        return None
-    try:
-        key_path = _resolve_secret(host.credential.secret_path)
-    except ValueError:
-        logger.exception("traffic_watch: bad credential secret_path for %s - skipping", hostname)
-        return None
-    if not key_path.exists():
-        logger.warning("traffic_watch: credential file missing for %s - skipping", hostname)
-        return None
-    return _RemoteTail(host.ip_address, host.ssh_port, host.ssh_user, key_path)
+async def _retention_loop():
+    from app.services.traffic_store import cleanup
 
-
-async def start_traffic_watch() -> None:
-    """Fire-and-forget background tasks - call once from app startup. Never
-    raises: this is a visualization feature, not core functionality, and
-    must not be able to take ops-api's own startup down with it."""
-    try:
-        await _start_traffic_watch_unsafe()
-    except Exception:
-        logger.exception("traffic_watch: failed to start - Traffic Map will show no data")
-
-
-async def _start_traffic_watch_unsafe() -> None:
-    settings = get_settings()
-    if not settings.traffic_caddy_host and not settings.traffic_npm_host:
-        return
-    vps_tail = await _load_host_connection(settings.traffic_caddy_host) if settings.traffic_caddy_host else None
-    npm_tail = await _load_host_connection(settings.traffic_npm_host) if settings.traffic_npm_host else None
-
-    async with async_session_factory() as db:
-        result = await db.execute(select(Host).where(Host.hostname == settings.traffic_caddy_host))
-        vps_host = result.scalar_one_or_none()
-    if vps_host is not None and vps_host.latitude is not None and vps_host.longitude is not None:
-        _state.dest_points["edge-host"] = {
-            "lat": vps_host.latitude,
-            "lon": vps_host.longitude,
-            "city": None,
-            "country": None,
-        }
-
-    if vps_tail is not None:
-        asyncio.create_task(_source_loop("edge-host", vps_tail, _poll_caddy))
-
-    if npm_tail is not None:
-        asyncio.create_task(_source_loop("home", npm_tail, _poll_npm))
-        asyncio.create_task(_home_dest_refresh_loop(npm_tail))
-
-
-async def _home_dest_refresh_loop(tail: _RemoteTail) -> None:
     while True:
-        await _resolve_home_dest(tail)
-        await asyncio.sleep(HOME_DEST_REFRESH_S)
+        try:
+            async with async_session_factory() as db, db.begin():
+                if await db.scalar(text("SELECT pg_try_advisory_xact_lock(738104)")):
+                    await cleanup(db, time.time())
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("Traffic retention pass failed")
+        await asyncio.sleep(300)
 
 
-def get_recent_events(since: float) -> list[dict]:
-    return [asdict(e) for e in _state.events if e.ts > since]
+async def start_traffic_watch():
+    from app.services.traffic_security import security_loop
+
+    for coro in (_supervise(), _retention_loop(), security_loop()):
+        task = asyncio.create_task(coro)
+        _tasks.add(task)
 
 
-def get_dest_points() -> dict:
-    return dict(_state.dest_points)
+async def stop_traffic_watch():
+    tasks = list(_tasks) + [task for _, task in _running.values()]
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    _tasks.clear()
+    _running.clear()

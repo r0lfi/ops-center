@@ -18,7 +18,7 @@ _MAX_EVENTS_TO_MODEL = 20
 TOOL_SCHEMA = {
     "name": "get_network_traffic_summary",
     "description": (
-        "Recent inbound traffic seen at the edge (edge-host's Caddy and the home reverse proxy): "
+        "Recent traffic from the sources configured in Traffic Map Settings: "
         "request counts, distinct client countries, and any 4xx/5xx ('suspicious') requests - the "
         "same feed the Traffic Map page shows. Returns available=false if no data has been "
         "published yet."

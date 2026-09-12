@@ -36,6 +36,7 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 COPY backend/app/models ./app/models
 COPY backend/app/db ./app/db
 COPY backend/app/core ./app/core
+COPY backend/app/schemas/ai_collaboration.py ./app/schemas/ai_collaboration.py
 RUN touch app/__init__.py
 
 COPY worker_ai ./worker_ai/

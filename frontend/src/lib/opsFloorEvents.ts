@@ -1,6 +1,7 @@
+import { useSessionToken } from "@/lib/auth";
 import { useEffect, useState } from "react";
 
-import { getToken, type AgentStatus } from "@/lib/api";
+import { type AgentStatus } from "@/lib/api";
 import { REAL_AGENT_SLUGS, STATIONS, stationBySlug, type AgentVisual, type AgentVisualState } from "@/lib/opsFloorTypes";
 
 /**
@@ -64,8 +65,8 @@ export function useOpsFloorAgents(): { agents: AgentVisual[]; connected: boolean
   const [agentsBySlug, setAgentsBySlug] = useState<Record<string, AgentVisual>>(initialAgents);
   const [connected, setConnected] = useState(false);
 
+  const token = useSessionToken();
   useEffect(() => {
-    const token = getToken();
     if (!token) return;
 
     const source = new EventSource(`/api/ai/agents/stream?token=${encodeURIComponent(token)}`);
@@ -100,7 +101,7 @@ export function useOpsFloorAgents(): { agents: AgentVisual[]; connected: boolean
     };
 
     return () => source.close();
-  }, []);
+  }, [token]);
 
   const agents = Object.values(agentsBySlug);
   const activeCount = agents.filter((a) => a.state !== "idle").length;

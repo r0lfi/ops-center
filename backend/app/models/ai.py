@@ -15,7 +15,7 @@ AGENT_STATUSES = ("idle", "working", "waiting", "investigating", "error", "disab
 TASK_STATUSES = ("queued", "running", "completed", "failed", "cancelled")
 TASK_SOURCES = ("web", "nextcloud_talk", "schedule")
 FINDING_SEVERITIES = ("info", "low", "medium", "high", "critical")
-ACTION_STATUSES = ("pending", "approved", "rejected", "executed", "failed", "expired")
+ACTION_STATUSES = ("pending", "approved", "executing", "rejected", "executed", "failed", "expired")
 ACTION_RISKS = ("low", "medium", "high")
 
 

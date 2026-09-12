@@ -109,23 +109,23 @@ def run_talk_task(self, task_id: str, room_token: str, backend: str, reply_to: s
     conversation as the bot, as a reply to the message that asked."""
     from worker_ai.talk import post_message
 
-    _run_agent_task(task_id, self.request.id)
+    if not _run_agent_task(task_id, self.request.id):
+        return
     with SessionLocal() as db:
         task = db.get(AITask, task_id)
         if task is None:
             return
         text = task.response_message or (f"Ops AI could not answer: {task.error_message}" if task.error_message else "(no answer)")
-    try:
+    from app.core.talk_memory import task_binding_valid
+    if not task_binding_valid(task):
+        # Preserve bot replies for existing rooms without private-memory bindings.
         post_message(backend, room_token, text, reply_to or None)
-    except Exception as exc:  # noqa: BLE001 - the answer is still in Ops Center even if Talk rejects the post
-        with SessionLocal() as db:
-            task = db.get(AITask, task_id)
-            if task is not None:
-                task.error_message = f"answered, but posting to Talk failed: {exc}"
-                db.commit()
+    # The HA API notifier delivers linked-room answers with shared deduplication.
+    # It also retries after transient Talk outages without rerunning the agent.
 
 
-def _run_agent_task(task_id: str, celery_task_id: str | None) -> None:
+
+def _run_agent_task(task_id: str, celery_task_id: str | None) -> bool:
     with SessionLocal() as db:
         task = db.execute(select(AITask).where(AITask.id == task_id).with_for_update()).scalar_one_or_none()
         if task is None or task.status != "queued":
@@ -162,18 +162,21 @@ def _run_agent_task(task_id: str, celery_task_id: str | None) -> None:
             # A genuinely unexpected bug, not a normal provider/tool
             # failure (those are already handled inside run_agent) - still
             # needs the agent visibly marked down rather than left mid-task.
-            # Recover a failed SQL transaction before recording the task failure.
+            # A SQL error leaves PostgreSQL's transaction aborted. Recover it
+            # before reloading the task or recording its terminal state.
             db.rollback()
             db.refresh(task, with_for_update=True)
             if task.status != "cancelled":
                 task.status = "failed"
                 task.error_message = str(exc)
-                set_agent_state(db, agent, "error", str(exc), None, str(task.id))
+                set_agent_state(db, agent, "error", "Collaboration investigation failed" if task.source == "collaboration" else str(exc), None, None if task.source == "collaboration" else str(task.id))
         finally:
             task.completed_at = _now()
             if task.started_at:
                 task.duration_ms = int((task.completed_at - task.started_at).total_seconds() * 1000)
             db.commit()
+    return True
+
 
 
 @celery_app.task(name="worker_ai.tasks.execute_action_task")
@@ -187,20 +190,49 @@ def execute_action_task(action_id: str) -> None:
     Celery message).
     """
     with SessionLocal() as db:
-        action = db.get(AIAction, action_id)
+        action = db.execute(select(AIAction).where(AIAction.id == action_id).with_for_update()).scalar_one_or_none()
         if action is None or action.status != "approved":
             return
         if action.task_id and db.execute(select(AITask.status).where(AITask.id == action.task_id)).scalar_one_or_none() == "cancelled":
             action.status = "expired"
             db.commit()
             return
+        from app.models.user import User
+        from worker_ai.ai.runtime import _check_host_allowed
+        approver = db.execute(select(User).where(User.username == action.approved_by)).scalar_one_or_none()
         agent = action.agent
+        if (not approver or not approver.is_active or approver.role not in ("operator","admin")
+            or str(approver.id) != (action.result or {}).get("approval_user_id")
+            or (action.approval_level >= 3 and approver.role != "admin")
+            or not action.expires_at or action.expires_at <= _now()
+            or not agent.enabled or action.tool not in (agent.allowed_tools or [])
+            or _check_host_allowed(agent, db, action.arguments.get("hostname"))):
+            action.status = "expired"
+            action.result = {"error": "Authorization expired or changed before execution"}
+            db.commit()
+            return
+        from app.core.talk_memory import task_binding_valid
+        if (action.result or {}).get("approval_source") == "talk":
+            parent = db.get(AITask, action.task_id) if action.task_id else None
+            if parent is None or not task_binding_valid(parent) or parent.owner_user_id != approver.id:
+                action.status = "expired"
+                action.result = {"error":"Talk user/room binding was revoked before execution"}
+                db.commit()
+                return
+        action.status = "executing"
+        action.executed_at = _now()  # claim timestamp; overwritten on completion
+        db.commit()  # atomic claim MUST precede set_agent_state, which commits too
 
         set_agent_state(db, agent, "working", f"Executing: {action.action}", None, str(action.task_id) if action.task_id else None)
 
         try:
             executor = EXECUTORS[action.tool]
-            result = executor(action.arguments)
+            if action.tool == "expand_disk":
+                from worker_ai.disk_ops import validate_disk_scope
+                validate_disk_scope(db, agent, action.arguments)
+                result = executor({**action.arguments, "_action_id": str(action.id)})
+            else:
+                result = executor(action.arguments)
             action.result = result
             action.status = "executed" if result.get("available", True) else "failed"
         except Exception as exc:  # noqa: BLE001 - must never crash the worker silently

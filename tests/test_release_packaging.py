@@ -56,3 +56,13 @@ def test_reviewed_artwork_is_pinned_to_exact_path_and_bytes():
     assert not checker.check_file(name, data)
     assert checker.check_file(name, data + b'changed')
     assert checker.check_file('docs/images/other.gif', data)
+
+
+def test_pwa_icons_are_reviewed_and_exactly_pinned():
+    checker = module('check-release')
+    icons = sorted((ROOT / 'frontend/public/icons').glob('*.png'))
+    assert len(icons) >= 5
+    for icon in icons:
+        name = str(icon.relative_to(ROOT))
+        assert not checker.check_file(name, icon.read_bytes())
+        assert checker.check_file(name, icon.read_bytes() + b'changed')

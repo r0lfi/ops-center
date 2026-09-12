@@ -1,4 +1,5 @@
 import httpx
+from worker_ai.ai.transport import post
 
 from worker_ai.ai.providers.base import AIProvider, ProviderError, ProviderResult, ToolCall
 
@@ -17,7 +18,7 @@ class AnthropicProvider(AIProvider):
             {"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools
         ]
         try:
-            resp = httpx.post(
+            resp = post(
                 f"{self._base_url}/v1/messages",
                 headers={
                     "x-api-key": self._api_key,
