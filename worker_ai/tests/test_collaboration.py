@@ -200,7 +200,8 @@ def test_board_read_is_owner_only_and_settings_admin_only(database):
     from app.api.deps import get_current_user
     from app.db.session import get_db
     d = database
-    engine = create_async_engine(str(d.engine.url).replace("+psycopg", "+asyncpg"))
+    # Keep the URL object: converting it to text masks password credentials.
+    engine = create_async_engine(d.engine.url.set(drivername="postgresql+asyncpg"))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async def db_override():
         async with factory() as session:
