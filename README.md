@@ -34,15 +34,40 @@ Ops Center combines:
 - 🐳 Docker workload management
 - ⚙️ Ansible automation
 - 📊 Monitoring and observability
+- 🌍 Configurable Traffic Map, persistent history and authentication alerts
+- 📱 Optional installable PWA and dedicated wallboards
 - 🔐 Vulnerability and security scanning
 - 🔄 Patching and scheduled operations
 - 🛡️ Optional HA / cluster deployment
 - 🤖 AI-assisted infrastructure operations
 - 🛰️ Interactive **2D and 3D Operations Floor**
-- 💬 Agent chat and task interaction
+- 💬 Agent chat, task interaction and private collaboration boards
 - 📡 Optional integrations such as Nextcloud Talk and external AI providers
 
 > **Project status:** Ops Center is under active development. Validate it in a lab environment before using it against production infrastructure.
+
+---
+
+## Release highlights — portable monitoring and PWA (2026-09-13)
+
+This source update adds configurable traffic and authentication monitoring,
+an optional installable web app, and new assisted operations workflows.
+
+| Area | What is included | Setup and details |
+| --- | --- | --- |
+| **Traffic Map** | Live observations, persistent history, source filters, timeline, country/domain summaries and a dedicated wallboard. | [Traffic Map](#traffic-map-and-authentication) |
+| **Monitoring Settings** | Your own servers, reader types, log paths, source labels, trust rules and history limits; changes apply without rebuilding. | [Configure monitoring](#configure-your-own-monitoring) |
+| **Authentication alerts** | Application, SSH and WireGuard signals, configurable trusted origins, reviewable alerts and optional administrator Talk notifications. | [Authentication rules](docs/traffic-map.md#trust-and-notification-rules) |
+| **PWA and sessions** | Optional desktop/mobile installation, iPhone/iPad help, explicit offline state, user-controlled updates and renewal of open sessions. | [Progressive Web App](#progressive-web-app) |
+| **Agent collaboration** | Owner-private investigations with permitted helpers, diagnostic tools, editable rules, budgets and stop controls. | [Collaboration](#agent-collaboration) |
+| **Disk expansion** | One approved workflow for supported LVM/filesystem growth and optional verified Proxmox backing-disk growth. | [Managed disk expansion](#managed-disk-expansion) |
+| **Integration updates** | Configured HTTPS Talk delivery, approval/progress messages, authenticated wg-easy v14 access and SSH host-key checks before authentication. | [Integration and access updates](#integration-and-access-updates) |
+| **Portable distribution** | Configurable deployment defaults, separate runtime secrets, standard/HA installer support and documented migration requirements. | [Upgrading this release](#upgrading-this-release) |
+
+**Existing installations must apply migrations through `0041` and configure
+Traffic Map in Settings.** Old traffic-source and login-trust environment
+variables are not imported automatically. Read the upgrade steps before replacing
+a running installation.
 
 ---
 
@@ -80,6 +105,7 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Host health information
 - Docker workload management
 - Infrastructure task execution
+- Managed SSH fingerprint verification before sending credentials
 
 ### Automation
 
@@ -88,6 +114,7 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Infrastructure playbooks
 - Remote task execution
 - Scheduled operations
+- Single-approval disk expansion with preview, capacity checks and resumable requests
 
 ### Monitoring
 
@@ -97,6 +124,9 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Loki
 - Blackbox Exporter
 - Optional cAdvisor metrics
+- Configurable live Traffic Map and PostgreSQL-backed traffic history
+- Authentication observations, security alerts and collection health
+- Dedicated Traffic Map wallboard for desktop, tablet and installed PWA
 
 ### Security
 
@@ -137,6 +167,11 @@ See **[HA / cluster deployment](docs/ha.md)** for the complete topology, network
 AI functionality is optional — **Ops Center can operate without an AI provider configured**.
 
 The architecture includes a dedicated AI worker and provider integrations while keeping infrastructure execution separated into specialized workers. Bring your own provider credentials.
+
+Administrators can also enable private collaboration investigations with selected
+agents, explicit diagnostic tools and configurable budgets. Each investigation
+records questions, evidence and the lead agent's response. See
+[Agent collaboration](#agent-collaboration).
 
 ---
 
@@ -436,9 +471,12 @@ After installation:
 
 1. Sign into Ops Center.
 2. Add the Linux systems you want to manage.
-3. Configure SSH credentials.
-4. Configure optional integrations.
-5. Configure an AI provider if AI functionality is required.
+3. Configure SSH credentials and verify managed host fingerprints.
+4. [Configure Traffic Map sources](#configure-your-own-monitoring), trust rules
+   and retention if traffic/authentication monitoring is required.
+5. Configure optional integrations.
+6. Configure an AI provider and optional collaboration policy if required.
+7. Optionally install the [PWA](#progressive-web-app) or open a wallboard.
 
 Private SSH keys and passwords belong in runtime secrets and must **never be committed to Git**.
 
@@ -467,6 +505,10 @@ These integrations require your own accounts, infrastructure and configuration.
 
 See:
 
+- [Traffic Map and authentication](docs/traffic-map.md)
+- [PWA behavior and deployment](docs/pwa.md)
+- [Agent collaboration](docs/agent-collaboration.md)
+- [Managed disk expansion](docs/disk-expansion.md)
 - [Integrations](docs/integrations.md)
 - [Security](docs/security.md)
 - [Operations](docs/operations.md)
@@ -503,7 +545,10 @@ Frontend development requires Node.js 22 and npm. Python components require Pyth
 ```bash
 cd frontend
 npm ci
+npm run lint
 npm run build
+npx playwright install --with-deps chromium webkit
+npm test
 cd ..
 bash scripts/test/run-tests.sh
 ```
@@ -571,6 +616,13 @@ Before production use:
 - [x] Cluster status UI
 - [x] Administrative PostgreSQL switchover
 - [x] Portable HA configuration generator and Ansible preparation
+- [x] Configurable Traffic Map sources, history and collection status
+- [x] Authentication rules, reviewable alerts and optional Talk delivery
+- [x] Optional PWA, iOS installation help and Traffic Map wallboard
+- [x] Open-session renewal and stream reconnection
+- [x] Owner-private agent collaboration with permissions and budgets
+- [x] Single-approval managed disk expansion
+- [x] Authenticated wg-easy v14 integration
 
 ### Planned / evolving
 
@@ -583,7 +635,7 @@ Before production use:
 - [ ] Better Operations Floor visualization
 - [ ] Dedicated HA monitoring / shared observability storage
 - [ ] More automation workflows
-- [ ] Role-based agent access
+- [ ] Broader role-based agent access beyond existing action and collaboration controls
 - [ ] Multi-user improvements
 - [ ] Easier deployment and upgrades
 - [ ] Prebuilt container releases
@@ -592,43 +644,197 @@ Ideas and contributions are welcome.
 
 ---
 
-## Progressive Web App
+## Traffic Map and authentication
 
-Ops Center still works as a normal responsive website. Installation is optional:
-use Chrome/Edge's install command or **Install Ops Center** when available. On
-iPhone/iPad use Safari → Share → Add to Home Screen, enabling **Open as Web App**
-if offered. The installed app opens standalone and uses the same backend/API.
+Traffic Map combines live observations with searchable PostgreSQL history.
+Open **Traffic Map** for the normal view or `/traffic-map/wallboard` for a
+dedicated display. Select a configured source, time window, error filter or
+search term; inspect the timeline, country/domain summaries and collection
+status. The backend keeps collecting while the page is closed or the map is
+paused. A failed reader is shown as unavailable.
 
-Production requires HTTPS; localhost is supported for testing. The Vite/Workbox
-service worker caches build assets and an explicit offline page, never APIs,
-credentials or live infrastructure status. Updates wait for the user's **Reload**.
-Keep HTML/service-worker revalidation and SPA fallback rules when adding a reverse
-proxy. Test with `npm ci`, `npm run build` and `npm test` in `frontend` after
-installing Playwright browsers. See [PWA behavior and deployment](docs/pwa.md).
+Supported sources use your registered servers and managed SSH credentials:
+
+| Source | What to configure | What it observes |
+| --- | --- | --- |
+| **Nginx Proxy Manager** | Absolute access-log path or glob. | HTTP metadata; optional recognized Jellyfin or wg-easy login endpoints for explicitly configured domains. |
+| **Caddy** | JSON access-log path or glob. | HTTP metadata and client locations when GeoIP is available. |
+| **OpenSSH** | The server's systemd journal unit. | Successful authentication; failed authentication is an opt-in per source. |
+| **Application audit JSONL** | Authentication audit path and service hostname. | Explicit successful, failed or throttled authentication outcomes. |
+| **WireGuard** | Interface, service hostname and optional Docker container. | Authenticated peer handshakes; these do not identify a named user or prove a new interactive login. |
+
+The compact authentication banner appears above both map views, can be
+minimized and scrolls with the page. It updates independently of map filters and
+pause. Security alerts can be reviewed in the UI. Successful application/VPN
+authentication outside configured trusted countries or current DNS addresses
+has high priority. **SSH trusts only the current public addresses of configured
+DNS names; country exemptions never apply to SSH.** Failed application logins
+remain alertable from trusted origins. Missing DNS/GeoIP information never
+silently grants trust, and a generic HTTP 200 is not proof of login.
+
+Optional Nextcloud Talk delivery sends notifications to configured administrator
+rooms, with retries and visible delivery failures. Alerts provide evidence for
+investigation; they do not automatically block clients.
+
+Client locations use a local MaxMind-compatible MMDB file. Set destination
+coordinates on each managed server. No external IP geolocation service receives
+client addresses; the browser uses OpenStreetMap for basemap tiles. History
+stores allowlisted observation metadata, excluding request paths, query strings,
+bodies, usernames, passwords and cookies. Default history limits are **30 days
+and 500,000 observations**. Source cursors, event deduplication and PostgreSQL
+locks support collection across HA API nodes.
+
+See the [Traffic Map guide](docs/traffic-map.md) for reader prerequisites,
+audit-log format, trust behavior, retention, privacy and collection diagnostics.
 
 ## Configure your own monitoring
 
-A fresh installation contains no monitored servers or trusted origins. Register
-servers and managed credentials, complete SSH onboarding, then open **Settings →
-Traffic Map & authentication**. Add NPM/Caddy logs, application audit logs,
-OpenSSH journals or WireGuard interfaces, and choose retention and login trust
-rules. Source labels, filters and map destinations follow your configuration.
+Fresh installations start with traffic collection disabled and no sources or
+trusted origins.
 
-Successful SSH logins trust only current configured DNS addresses; application
-and VPN logins can also trust selected countries. Failed SSH authentication is
-off by default. Authentication notices appear on Traffic Map and can be delivered
-to configured administrator Talk rooms. Read [Traffic Map setup](docs/traffic-map.md)
-and [optional integrations](docs/integrations.md) before enabling collection.
+1. Add your systems under **Servers**, assign managed SSH credentials and
+   complete onboarding. Verify each recorded SSH fingerprint independently.
+   Enter server coordinates if you want destination markers.
+2. Open **Settings → Traffic Map & authentication** as an administrator.
+3. Add a source, choose its registered server and reader format, and enter the
+   path, journal unit or interface. Use a stable source ID and a display label.
+   Managed hosts need Python 3 and the relevant log/command access.
+4. Choose trusted countries and DNS names, authentication notifications and
+   history limits. Supported limits are **1–365 days**, **1,000–5,000,000
+   observations** and up to **32 sources**.
+5. Enable the desired sources and collection, save, then check
+   **Traffic Map → Collection status**. Settings normally reconcile within
+   10 seconds; an existing read may take another 30 seconds to finish.
 
-Provider settings, host scopes and collaboration budgets remain editable in the
-AI pages. Database, ingress, camera/VPN/Talk connections and secret-file locations
-are deployment settings documented in `.env.example`; secrets and generated
-inventories stay outside Git. Optional [collaboration](docs/agent-collaboration.md)
-and [single-approval disk expansion](docs/disk-expansion.md) are included.
+Later Settings changes do not need a rebuild or service restart. Disabling
+collection preserves saved history; removed sources stop collecting and their
+observations expire under retention. A new source starts with newly arriving
+activity, without replaying historical login alerts. Settings use revision
+checks to prevent overwriting another administrator's changes.
 
-**Upgrade:** apply migrations through `0041` and configure Traffic Map's database
-settings before relying on collectors. Legacy source environment variables are
-not auto-imported. Review the [upgrade details](docs/traffic-map.md#upgrade-and-testing).
+Provider settings, host scopes and collaboration budgets are available in the
+AI pages. Database/ingress settings, integration URLs and secret-file locations
+remain deployment configuration described in [`.env.example`](.env.example)
+and [the integration guide](docs/integrations.md). Keep credentials, generated
+inventories and runtime state outside Git.
+
+## Progressive Web App
+
+Ops Center supports ordinary responsive browsing and optional installation on
+desktop, phone or tablet. Both use the same backend, authentication, API,
+polling, WebSocket and SSE connections.
+
+- **Chrome/Edge:** use the browser's install command or **Install Ops Center**
+  when offered.
+- **iPhone/iPad:** open in Safari, choose **Share → Add to Home Screen**, and
+  enable **Open as Web App** if offered. In-app help explains the manual flow.
+- **Wallboards:** open `/wallboard` or `/traffic-map/wallboard` for dedicated
+  views. Direct links and refreshes are supported by the frontend SPA fallback.
+- **Offline:** an explicit offline page/overlay hides previously loaded live
+  status. Reconnect and reload to fetch current data.
+- **Updates:** a new version waits for the user's **Reload** action so work can
+  be saved first. Open sessions renew before expiry, and read-only streams
+  reconnect with the renewed token. Invalid sessions still require sign-in.
+
+Production requires HTTPS. The service worker caches build assets and a
+data-free offline page; it does not cache API responses, credentials or live
+infrastructure data, and it does not queue or replay operational commands.
+Preserve HTML/service-worker revalidation, API/stream routing and SPA fallback
+when configuring a reverse proxy. Deployment at the site root is supported.
+
+See [PWA behavior and deployment](docs/pwa.md) for browser requirements,
+update handling and tests.
+
+## Agent collaboration
+
+Administrators can enable **AI Agents → Collaboration settings**, select a lead
+agent and allowed helpers, and edit rules, tools and budgets. Users then start
+an investigation under **AI Agents → Collaboration board**.
+
+Each owner-private board records the question, agent evidence, help requests and
+results. Only the addressed helper runs, one at a time, within the configured
+depth; the lead combines the findings. Other users, including other
+administrators, cannot read the investigation's content.
+
+Controls include per-investigation and daily token budgets, output/model-call
+limits, messages, help requests, participants, time and concurrency. Backend
+permissions enforce the allowed peers, tools and host scopes. Permission
+revocations, the master switch and stop requests prevent further admitted work;
+a request already running may finish.
+
+Collaboration starts disabled. Its tools are diagnostic: operational changes
+still use the existing action-approval workflow. Boards do not automatically
+join ordinary chat, Talk or scheduled jobs. See
+[collaboration setup and limits](docs/agent-collaboration.md).
+
+## Managed disk expansion
+
+A single approved action can preview and grow one supported mounted LVM
+filesystem, including its verified Proxmox backing disk when necessary. The
+workflow uses existing free capacity first, checks the guest/VM/disk identity,
+validates physical storage capacity, grows the required layers and verifies the
+resulting filesystem size.
+
+Preview is the default. Execution requires approval bound to the exact target,
+mount, requested increment and stable request ID. The default increment is
+**50 GiB**; an explicit increment can be **1–1024 GiB**. Request journals record
+absolute targets so an interrupted request can resume without applying the
+increment twice. Failures retain evidence in the job/action result.
+
+Supported guest layouts are a mounted XFS/ext4 filesystem on an ordinary linear
+LVM LV with one PV. Unsupported or ambiguous layouts are refused. The workflow
+does not install missing tools, reboot, shrink or reformat disks. Read
+[managed disk expansion](docs/disk-expansion.md) for prerequisites, supported
+Proxmox storage, capacity rules and recovery steps before using it.
+
+## Integration and access updates
+
+- **Nextcloud Talk:** configure an explicit HTTPS backend, bot secret and
+  administrator room/user bindings. Background delivery is opt-in through
+  `TALK_NOTIFICATIONS_ENABLED`. Linked users can receive approval requests,
+  job progress/results and configured authentication alerts; webhook-supplied
+  destinations do not select the outbound server.
+- **wg-easy v14:** VPN operations establish a verified HTTPS session using a
+  server-side password file and close it afterward. VPN passwords and session
+  cookies stay out of the browser. This replaces the former unauthenticated
+  `WG_EASY_URL` integration; configure `WIREGUARD_URL` and
+  `WIREGUARD_PASSWORD_PATH`.
+- **SSH onboarding:** subsequent managed connections verify the stored host
+  fingerprint before sending authentication. Changed keys stop collection
+  until the host identity is checked.
+- **Deployment configuration:** monitoring endpoints, integration connections
+  and secret locations are configurable for your installation. Standard and
+  HA installer support remains available.
+
+See [optional integrations](docs/integrations.md) and
+[agent history and memory](docs/agent-memory.md) for account binding and privacy.
+
+## Upgrading this release
+
+1. Back up the database, runtime secrets and deployment configuration. Record
+   current traffic-source servers, IDs, paths and trust rules, and retain the
+   previous images for recovery.
+2. Follow the [standard operations](docs/operations.md) or [HA upgrade
+   procedure](docs/ha.md). Apply Alembic migrations through **`0041`** before
+   starting the new API, and use matching API, worker and frontend versions.
+   The update includes collaboration (`0037`), traffic history/security
+   (`0038`–`0039`), disk expansion (`0040`) and traffic settings (`0041`).
+3. Recreate your traffic sources and trust rules in **Settings → Traffic Map &
+   authentication**. Legacy `TRAFFIC_CADDY_*`, `TRAFFIC_NPM_*` and
+   `TRAFFIC_LOGIN_*` variables are not imported. Saved traffic history is
+   preserved, but collection must be configured before relying on it.
+4. Review the wg-easy and Talk configuration changes above. Confirm collection
+   status, authentication rules and any configured notification delivery.
+5. For PWA users, verify HTTPS, manifest/service-worker responses, direct
+   wallboard links and the update prompt. Keep older hashed assets briefly
+   during rolling deployments so existing tabs can finish loading.
+
+Validation recorded for this update includes **298 Python tests**, **65 browser
+cases**, all **41 migrations** on an empty PostgreSQL database, a production
+frontend build and **five application image builds**. See the dated
+[validation report](docs/validation.md) for commands, skipped-by-default database
+tests, known warnings and limits. Container/emulated-browser checks do not
+establish a clean-VM installation or physical iPhone/iPad installation.
 
 ---
 
