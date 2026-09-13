@@ -16,6 +16,11 @@ PRIVATE_EXTENSIONS = {'.pem', '.key', '.p12', '.pfx', '.db', '.sqlite', '.sqlite
 
 # Visually reviewed public artwork. Pin bytes so replacements require a new review.
 REVIEWED_ARTWORK = {
+    "docs/images/mcp-clients.png": "7781b5ff3256ccf509027ee77a54e13a3d899f83c216312ec4c0b39ba2740e98",
+    "docs/images/mcp-agents.png": "ec0c9121910d0bdc4af59cd965473504696f6d961acc568186ab67085fb8c611",
+    "docs/images/mcp-approvals.png": "6526596a8ec74a4ade191c9b685ce22f1a5072ff615bfd4a87e7d8ed106d6235",
+    "docs/images/mcp-consent.png": "b303ca231208faa7c34f0059749a89dd8d9b06310526061c7466b0a4270fa743",
+
     "docs/images/features/agents.png": "a11272f511bd0d1f98168b84508215a89c59be3ffea342077d6f740b72ab4c63",
     "docs/images/features/login-events.png": "59f353ff177ab647fe0d1cdc3e467e39009e92adcdfba727f037e69133744250",
     "docs/images/features/automation.png": "60b3de052afd902e75b9efd413a12b5c056c084824b7ee6f337c1693e2a7db95",

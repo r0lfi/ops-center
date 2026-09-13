@@ -1,0 +1,5332 @@
+{
+  "tools": [
+    {
+      "name": "ops_health",
+      "method": "GET",
+      "path": "/api/health",
+      "scope": "ops:health:read",
+      "minimum_role": "viewer",
+      "description": "Health. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_list_audit_log",
+      "method": "GET",
+      "path": "/api/audit",
+      "scope": "ops:audit:read",
+      "minimum_role": "admin",
+      "description": "List Audit Log. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 200,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_list_hosts",
+      "method": "GET",
+      "path": "/api/hosts",
+      "scope": "ops:hosts:read",
+      "minimum_role": "viewer",
+      "description": "List Hosts. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "group_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Group Id"
+              },
+              "environment": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Environment"
+              },
+              "criticality": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Criticality"
+              },
+              "tag": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tag"
+              },
+              "is_docker_host": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Is Docker Host"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_create_host",
+      "method": "POST",
+      "path": "/api/hosts",
+      "scope": "ops:hosts:write",
+      "minimum_role": "admin",
+      "description": "Create Host. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1,
+                "title": "Hostname"
+              },
+              "fqdn": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fqdn"
+              },
+              "ip_address": {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1,
+                "title": "Ip Address"
+              },
+              "monitoring_ip_address": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Monitoring Ip Address"
+              },
+              "ssh_port": {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "title": "Ssh Port",
+                "default": 22
+              },
+              "ssh_user": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Ssh User"
+              },
+              "credential_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Credential Id"
+              },
+              "environment": {
+                "type": "string",
+                "title": "Environment",
+                "default": "production"
+              },
+              "location": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Location"
+              },
+              "latitude": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "maximum": 90.0,
+                    "minimum": -90.0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Latitude"
+              },
+              "longitude": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "maximum": 180.0,
+                    "minimum": -180.0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Longitude"
+              },
+              "group_ids": {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "title": "Group Ids"
+              },
+              "criticality": {
+                "type": "string",
+                "title": "Criticality",
+                "default": "medium"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "tags": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "title": "Tags"
+              },
+              "services_to_monitor": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "title": "Services To Monitor"
+              },
+              "auto_patch": {
+                "type": "boolean",
+                "title": "Auto Patch",
+                "default": false
+              },
+              "security_patch_policy": {
+                "type": "string",
+                "title": "Security Patch Policy",
+                "default": "scan_only"
+              },
+              "reboot_policy": {
+                "type": "string",
+                "title": "Reboot Policy",
+                "default": "manual"
+              },
+              "patch_window": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Patch Window"
+              },
+              "monitoring_enabled": {
+                "type": "boolean",
+                "title": "Monitoring Enabled",
+                "default": true
+              },
+              "log_collection_enabled": {
+                "type": "boolean",
+                "title": "Log Collection Enabled",
+                "default": true
+              },
+              "is_docker_host": {
+                "type": "boolean",
+                "title": "Is Docker Host",
+                "default": false
+              }
+            },
+            "type": "object",
+            "required": [
+              "hostname",
+              "ip_address",
+              "ssh_user"
+            ],
+            "title": "HostCreate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_host",
+      "method": "GET",
+      "path": "/api/hosts/{host_id}",
+      "scope": "ops:hosts:read",
+      "minimum_role": "viewer",
+      "description": "Get Host. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_update_host",
+      "method": "PATCH",
+      "path": "/api/hosts/{host_id}",
+      "scope": "ops:hosts:write",
+      "minimum_role": "admin",
+      "description": "Update Host. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "body": {
+            "properties": {
+              "hostname": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Hostname"
+              },
+              "fqdn": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fqdn"
+              },
+              "ip_address": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ip Address"
+              },
+              "monitoring_ip_address": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Monitoring Ip Address"
+              },
+              "ssh_port": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 65535.0,
+                    "minimum": 1.0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ssh Port"
+              },
+              "ssh_user": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Ssh User"
+              },
+              "credential_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Credential Id"
+              },
+              "environment": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Environment"
+              },
+              "location": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Location"
+              },
+              "latitude": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "maximum": 90.0,
+                    "minimum": -90.0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Latitude"
+              },
+              "longitude": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "maximum": 180.0,
+                    "minimum": -180.0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Longitude"
+              },
+              "group_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Group Ids"
+              },
+              "criticality": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Criticality"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "tags": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Tags"
+              },
+              "auto_patch": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Auto Patch"
+              },
+              "security_patch_policy": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Security Patch Policy"
+              },
+              "reboot_policy": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reboot Policy"
+              },
+              "patch_window": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Patch Window"
+              },
+              "monitoring_enabled": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Monitoring Enabled"
+              },
+              "log_collection_enabled": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Log Collection Enabled"
+              },
+              "is_docker_host": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Is Docker Host"
+              }
+            },
+            "type": "object",
+            "title": "HostUpdate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_delete_host",
+      "method": "DELETE",
+      "path": "/api/hosts/{host_id}",
+      "scope": "ops:hosts:write",
+      "minimum_role": "admin",
+      "description": "Delete Host. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_verify_host",
+      "method": "POST",
+      "path": "/api/hosts/{host_id}/verify",
+      "scope": "ops:hosts:write",
+      "minimum_role": "operator",
+      "description": "Verify Host. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_host_groups",
+      "method": "GET",
+      "path": "/api/host-groups",
+      "scope": "ops:host_groups:read",
+      "minimum_role": "viewer",
+      "description": "List Host Groups. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_create_host_group",
+      "method": "POST",
+      "path": "/api/host-groups",
+      "scope": "ops:host_groups:write",
+      "minimum_role": "admin",
+      "description": "Create Host Group. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Name"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "cron_expression": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cron Expression"
+              },
+              "patch_type": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Patch Type"
+              },
+              "batch_size": {
+                "type": "integer",
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "title": "Batch Size",
+                "default": 1
+              },
+              "schedule_enabled": {
+                "type": "boolean",
+                "title": "Schedule Enabled",
+                "default": false
+              }
+            },
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "title": "HostGroupCreate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_update_host_group",
+      "method": "PATCH",
+      "path": "/api/host-groups/{group_id}",
+      "scope": "ops:host_groups:write",
+      "minimum_role": "admin",
+      "description": "Update Host Group. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "group_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Group Id"
+              }
+            },
+            "required": [
+              "group_id"
+            ]
+          },
+          "body": {
+            "properties": {
+              "name": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Name"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "cron_expression": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cron Expression"
+              },
+              "patch_type": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Patch Type"
+              },
+              "batch_size": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000.0,
+                    "minimum": 1.0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Batch Size"
+              },
+              "schedule_enabled": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Schedule Enabled"
+              }
+            },
+            "type": "object",
+            "title": "HostGroupUpdate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_delete_host_group",
+      "method": "DELETE",
+      "path": "/api/host-groups/{group_id}",
+      "scope": "ops:host_groups:write",
+      "minimum_role": "admin",
+      "description": "Delete Host Group. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "group_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Group Id"
+              }
+            },
+            "required": [
+              "group_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_add_host_to_group",
+      "method": "POST",
+      "path": "/api/host-groups/{group_id}/hosts/{host_id}",
+      "scope": "ops:host_groups:write",
+      "minimum_role": "admin",
+      "description": "Add Host To Group. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "group_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Group Id"
+              },
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "group_id",
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_remove_host_from_group",
+      "method": "DELETE",
+      "path": "/api/host-groups/{group_id}/hosts/{host_id}",
+      "scope": "ops:host_groups:write",
+      "minimum_role": "admin",
+      "description": "Remove Host From Group. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "group_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Group Id"
+              },
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "group_id",
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_run_group_now",
+      "method": "POST",
+      "path": "/api/host-groups/{group_id}/run-now",
+      "scope": "ops:host_groups:write",
+      "minimum_role": "operator",
+      "description": "Run Group Now. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "group_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Group Id"
+              }
+            },
+            "required": [
+              "group_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_playbooks",
+      "method": "GET",
+      "path": "/api/automation/playbooks",
+      "scope": "ops:automation:read",
+      "minimum_role": "viewer",
+      "description": "List Playbooks. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_run_automation",
+      "method": "POST",
+      "path": "/api/automation/run",
+      "scope": "ops:automation:write",
+      "minimum_role": "operator",
+      "description": "Run Automation. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "playbook": {
+                "type": "string",
+                "title": "Playbook"
+              },
+              "target_type": {
+                "type": "string",
+                "title": "Target Type"
+              },
+              "host_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Host Id"
+              },
+              "host_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Host Ids"
+              },
+              "group_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Group Id"
+              },
+              "limit": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Limit"
+              },
+              "batch_size": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 1000.0,
+                    "minimum": 1.0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Batch Size"
+              },
+              "services": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Services"
+              },
+              "required_services": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Required Services"
+              }
+            },
+            "type": "object",
+            "required": [
+              "playbook",
+              "target_type"
+            ],
+            "title": "AutomationRunRequest"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_jobs",
+      "method": "GET",
+      "path": "/api/jobs",
+      "scope": "ops:jobs:read",
+      "minimum_role": "viewer",
+      "description": "List Jobs. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_get_job",
+      "method": "GET",
+      "path": "/api/jobs/{job_id}",
+      "scope": "ops:jobs:read",
+      "minimum_role": "viewer",
+      "description": "Get Job. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Job Id"
+              }
+            },
+            "required": [
+              "job_id"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_cancel_job",
+      "method": "POST",
+      "path": "/api/jobs/{job_id}/cancel",
+      "scope": "ops:jobs:write",
+      "minimum_role": "operator",
+      "description": "Cancel Job. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Job Id"
+              }
+            },
+            "required": [
+              "job_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_alerts",
+      "method": "GET",
+      "path": "/api/alerts",
+      "scope": "ops:alerts:read",
+      "minimum_role": "viewer",
+      "description": "List Alerts. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_list_services",
+      "method": "GET",
+      "path": "/api/services",
+      "scope": "ops:services:read",
+      "minimum_role": "viewer",
+      "description": "List Services. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Host Id"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_add_service_check",
+      "method": "POST",
+      "path": "/api/hosts/{host_id}/services",
+      "scope": "ops:services:write",
+      "minimum_role": "admin",
+      "description": "Add Service Check. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "body": {
+            "properties": {
+              "check_type": {
+                "type": "string",
+                "title": "Check Type"
+              },
+              "target": {
+                "type": "string",
+                "title": "Target"
+              },
+              "enabled": {
+                "type": "boolean",
+                "title": "Enabled",
+                "default": true
+              }
+            },
+            "type": "object",
+            "required": [
+              "check_type",
+              "target"
+            ],
+            "title": "MonitoringCheckCreate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_remove_service_check",
+      "method": "DELETE",
+      "path": "/api/hosts/{host_id}/services/{check_id}",
+      "scope": "ops:services:write",
+      "minimum_role": "admin",
+      "description": "Remove Service Check. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              },
+              "check_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Check Id"
+              }
+            },
+            "required": [
+              "host_id",
+              "check_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_patch_check",
+      "method": "POST",
+      "path": "/api/hosts/{host_id}/patch-check",
+      "scope": "ops:patching:write",
+      "minimum_role": "operator",
+      "description": "Patch Check. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_patch_security",
+      "method": "POST",
+      "path": "/api/hosts/{host_id}/patch-security",
+      "scope": "ops:patching:write",
+      "minimum_role": "operator",
+      "description": "Patch Security. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_patch_all",
+      "method": "POST",
+      "path": "/api/hosts/{host_id}/patch-all",
+      "scope": "ops:patching:write",
+      "minimum_role": "operator",
+      "description": "Patch All. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_host_patches",
+      "method": "GET",
+      "path": "/api/hosts/{host_id}/patches",
+      "scope": "ops:patching:read",
+      "minimum_role": "viewer",
+      "description": "Get Host Patches. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_patches",
+      "method": "GET",
+      "path": "/api/patches",
+      "scope": "ops:patching:read",
+      "minimum_role": "viewer",
+      "description": "List Patches. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "severity": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Severity"
+              },
+              "security_only": {
+                "type": "boolean",
+                "default": false,
+                "title": "Security Only"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_patch_reports",
+      "method": "GET",
+      "path": "/api/patching/reports",
+      "scope": "ops:patching:read",
+      "minimum_role": "viewer",
+      "description": "Patch Reports. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "queued",
+                      "running",
+                      "successful",
+                      "failed",
+                      "cancelled"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              },
+              "group": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Group"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "default": 25,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_patch_report",
+      "method": "GET",
+      "path": "/api/patching/reports/{job_id}",
+      "scope": "ops:patching:read",
+      "minimum_role": "viewer",
+      "description": "Patch Report. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Job Id"
+              }
+            },
+            "required": [
+              "job_id"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_patch_security_for_vulnerability",
+      "method": "POST",
+      "path": "/api/security/vulnerabilities/{vulnerability_id}/patch-security",
+      "scope": "ops:security:write",
+      "minimum_role": "operator",
+      "description": "Patch Security For Vulnerability. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "vulnerability_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Vulnerability Id"
+              }
+            },
+            "required": [
+              "vulnerability_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_patch_security_for_advisory",
+      "method": "POST",
+      "path": "/api/security/advisories/{advisory_id}/patch-security",
+      "scope": "ops:security:write",
+      "minimum_role": "operator",
+      "description": "Patch Security For Advisory. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "advisory_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Advisory Id"
+              }
+            },
+            "required": [
+              "advisory_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_vulnerabilities",
+      "method": "GET",
+      "path": "/api/security/vulnerabilities",
+      "scope": "ops:security:read",
+      "minimum_role": "viewer",
+      "description": "List Vulnerabilities. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "severity": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Severity"
+              },
+              "kev_only": {
+                "type": "boolean",
+                "default": false,
+                "title": "Kev Only"
+              },
+              "fix_available": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fix Available"
+              },
+              "affected_only": {
+                "type": "boolean",
+                "default": true,
+                "title": "Affected Only"
+              },
+              "host_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Host Id"
+              },
+              "container_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Container Name"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_what_needs_attention",
+      "method": "GET",
+      "path": "/api/security/attention",
+      "scope": "ops:security:read",
+      "minimum_role": "viewer",
+      "description": "What Needs Attention. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "default": 20,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_list_advisories",
+      "method": "GET",
+      "path": "/api/security/advisories",
+      "scope": "ops:security:read",
+      "minimum_role": "viewer",
+      "description": "List Advisories. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kev_only": {
+                "type": "boolean",
+                "default": false,
+                "title": "Kev Only"
+              },
+              "severity": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Severity"
+              },
+              "affected_only": {
+                "type": "boolean",
+                "default": true,
+                "title": "Affected Only"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_security_summary",
+      "method": "GET",
+      "path": "/api/security/summary",
+      "scope": "ops:security:read",
+      "minimum_role": "viewer",
+      "description": "Security Summary. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_security_root",
+      "method": "GET",
+      "path": "/api/security",
+      "scope": "ops:security:read",
+      "minimum_role": "viewer",
+      "description": "Security Root. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_scan_host",
+      "method": "POST",
+      "path": "/api/hosts/{host_id}/scan",
+      "scope": "ops:security:write",
+      "minimum_role": "operator",
+      "description": "Scan Host. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Host Id"
+              }
+            },
+            "required": [
+              "host_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_containers",
+      "method": "GET",
+      "path": "/api/containers",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "List Containers. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Hostname"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_start_container",
+      "method": "POST",
+      "path": "/api/containers/{hostname}/{name}/start",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Start Container. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_stop_container",
+      "method": "POST",
+      "path": "/api/containers/{hostname}/{name}/stop",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Stop Container. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_restart_container",
+      "method": "POST",
+      "path": "/api/containers/{hostname}/{name}/restart",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Restart Container. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_stacks",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/stacks",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "List Stacks. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_adopt_preview",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/stacks/{name}/adopt-preview",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Adopt Preview. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_stack",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/stacks/{name}",
+      "scope": "ops:containers:read",
+      "minimum_role": "admin",
+      "description": "Get Stack. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_stack_containers",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/stacks/{name}/containers",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Get Stack Containers. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_deploy_stack",
+      "method": "POST",
+      "path": "/api/docker-hosts/{hostname}/stacks",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Deploy Stack. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          },
+          "body": {
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 63,
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9_-]*$",
+                "title": "Name"
+              },
+              "compose_yaml": {
+                "type": "string",
+                "minLength": 1,
+                "title": "Compose Yaml"
+              }
+            },
+            "type": "object",
+            "required": [
+              "name",
+              "compose_yaml"
+            ],
+            "title": "StackDeployRequest"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_remove_stack",
+      "method": "DELETE",
+      "path": "/api/docker-hosts/{hostname}/stacks/{name}",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Remove Stack. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_run_stack_action",
+      "method": "POST",
+      "path": "/api/docker-hosts/{hostname}/stacks/{name}/{action}",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Run Stack Action. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              },
+              "action": {
+                "type": "string",
+                "title": "Action"
+              }
+            },
+            "required": [
+              "hostname",
+              "name",
+              "action"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_docker_hosts",
+      "method": "GET",
+      "path": "/api/docker-hosts",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "List Docker Hosts. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_get_docker_host",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Get Docker Host. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_docker_images",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/images",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "List Docker Images. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_docker_networks",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/networks",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "List Docker Networks. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_docker_volumes",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/volumes",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "List Docker Volumes. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_docker_events",
+      "method": "GET",
+      "path": "/api/docker-hosts/{hostname}/events",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "List Docker Events. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "event_type": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Event Type"
+              },
+              "limit": {
+                "type": "integer",
+                "default": 200,
+                "title": "Limit"
+              }
+            }
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_inspect_container_route",
+      "method": "GET",
+      "path": "/api/containers/{hostname}/{name}/inspect",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Inspect Container Route. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_container_logs_route",
+      "method": "GET",
+      "path": "/api/containers/{hostname}/{name}/logs",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Container Logs Route. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "tail": {
+                "type": "integer",
+                "default": 200,
+                "title": "Tail"
+              }
+            }
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_container_stats_route",
+      "method": "GET",
+      "path": "/api/containers/{hostname}/{name}/stats",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Container Stats Route. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_bulk_container_action",
+      "method": "POST",
+      "path": "/api/containers/{hostname}/bulk-action",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Bulk Container Action. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          },
+          "body": {
+            "properties": {
+              "names": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 100,
+                "minItems": 1,
+                "title": "Names"
+              },
+              "action": {
+                "type": "string",
+                "title": "Action"
+              }
+            },
+            "type": "object",
+            "required": [
+              "names",
+              "action"
+            ],
+            "title": "BulkActionRequest"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_image_update_status",
+      "method": "GET",
+      "path": "/api/images/update-status",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Image Update Status. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "image": {
+                "type": "string",
+                "title": "Image"
+              },
+              "local_digest": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Local Digest"
+              }
+            },
+            "required": [
+              "image"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "ops_pull_image_route",
+      "method": "POST",
+      "path": "/api/docker-hosts/{hostname}/images/pull",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Pull Image Route. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              }
+            },
+            "required": [
+              "hostname"
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "image": {
+                "type": "string",
+                "title": "Image"
+              }
+            },
+            "required": [
+              "image"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_recreate_container_route",
+      "method": "POST",
+      "path": "/api/containers/{hostname}/{name}/recreate",
+      "scope": "ops:containers:write",
+      "minimum_role": "admin",
+      "description": "Recreate Container Route. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          },
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "image": {
+                "type": "string",
+                "title": "Image"
+              }
+            },
+            "required": [
+              "image"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_container_vulnerabilities",
+      "method": "GET",
+      "path": "/api/containers/{hostname}/{name}/vulnerabilities",
+      "scope": "ops:containers:read",
+      "minimum_role": "viewer",
+      "description": "Container Vulnerabilities. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string",
+                "title": "Hostname"
+              },
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "hostname",
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_cluster_status",
+      "method": "GET",
+      "path": "/api/cluster/status",
+      "scope": "ops:cluster:read",
+      "minimum_role": "viewer",
+      "description": "Get Cluster Status. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_trigger_switchover",
+      "method": "POST",
+      "path": "/api/cluster/postgres/switchover",
+      "scope": "ops:cluster:write",
+      "minimum_role": "admin",
+      "description": "Trigger Switchover. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "candidate": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Candidate"
+              }
+            },
+            "type": "object",
+            "title": "SwitchoverRequest"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_cameras_status",
+      "method": "GET",
+      "path": "/api/cameras/status",
+      "scope": "ops:cameras:read",
+      "minimum_role": "viewer",
+      "description": "Get Cameras Status. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_list_peers",
+      "method": "GET",
+      "path": "/api/vpn/peers",
+      "scope": "ops:vpn:read",
+      "minimum_role": "viewer",
+      "description": "List Peers. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_create_peer",
+      "method": "POST",
+      "path": "/api/vpn/peers",
+      "scope": "ops:vpn:write",
+      "minimum_role": "operator",
+      "description": "Create Peer. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "title": "VpnPeerCreate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_delete_peer",
+      "method": "DELETE",
+      "path": "/api/vpn/peers/{peer_id}",
+      "scope": "ops:vpn:write",
+      "minimum_role": "operator",
+      "description": "Delete Peer. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "peer_id": {
+                "type": "string",
+                "title": "Peer Id"
+              }
+            },
+            "required": [
+              "peer_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_app_catalog_settings",
+      "method": "GET",
+      "path": "/api/app-catalog/settings",
+      "scope": "ops:app_catalog:read",
+      "minimum_role": "viewer",
+      "description": "Get App Catalog Settings. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_update_app_catalog_settings",
+      "method": "PUT",
+      "path": "/api/app-catalog/settings",
+      "scope": "ops:app_catalog:write",
+      "minimum_role": "admin",
+      "description": "Update App Catalog Settings. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "template_url": {
+                "type": "string",
+                "maxLength": 1000,
+                "minLength": 1,
+                "title": "Template Url"
+              }
+            },
+            "type": "object",
+            "required": [
+              "template_url"
+            ],
+            "title": "AppCatalogSettingsUpdate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_app_templates",
+      "method": "GET",
+      "path": "/api/app-catalog/templates",
+      "scope": "ops:app_catalog:read",
+      "minimum_role": "viewer",
+      "description": "List App Templates. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_render_app_template",
+      "method": "POST",
+      "path": "/api/app-catalog/templates/{template_id}/render",
+      "scope": "ops:app_catalog:write",
+      "minimum_role": "operator",
+      "description": "Render App Template. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "template_id": {
+                "type": "integer",
+                "title": "Template Id"
+              }
+            },
+            "required": [
+              "template_id"
+            ]
+          },
+          "body": {
+            "properties": {
+              "env": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object",
+                "title": "Env"
+              }
+            },
+            "type": "object",
+            "title": "RenderTemplateRequest"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_query_logs",
+      "method": "GET",
+      "path": "/api/logs",
+      "scope": "ops:logs:read",
+      "minimum_role": "viewer",
+      "description": "Query Logs. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "host": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Host"
+              },
+              "service": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Service"
+              },
+              "minutes": {
+                "type": "integer",
+                "maximum": 10080,
+                "minimum": 1,
+                "default": 60,
+                "title": "Minutes"
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 5000,
+                "minimum": 1,
+                "default": 500,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_host_metrics",
+      "method": "GET",
+      "path": "/api/metrics/hosts",
+      "scope": "ops:metrics:read",
+      "minimum_role": "viewer",
+      "description": "Host Metrics. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "minutes": {
+                "type": "integer",
+                "maximum": 1440,
+                "minimum": 5,
+                "default": 60,
+                "title": "Minutes"
+              },
+              "instance": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Instance"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_service_status",
+      "method": "GET",
+      "path": "/api/metrics/services",
+      "scope": "ops:metrics:read",
+      "minimum_role": "viewer",
+      "description": "Service Status. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_list_playbooks_6284d7",
+      "method": "GET",
+      "path": "/api/ansible/playbooks",
+      "scope": "ops:ansible:read",
+      "minimum_role": "viewer",
+      "description": "List Playbooks. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_get_playbook",
+      "method": "GET",
+      "path": "/api/ansible/playbooks/{name}",
+      "scope": "ops:ansible:read",
+      "minimum_role": "viewer",
+      "description": "Get Playbook. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_update_playbook",
+      "method": "PUT",
+      "path": "/api/ansible/playbooks/{name}",
+      "scope": "ops:ansible:write",
+      "minimum_role": "admin",
+      "description": "Update Playbook. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "title": "Name"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "body": {
+            "properties": {
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "title": "Content"
+              }
+            },
+            "type": "object",
+            "required": [
+              "content"
+            ],
+            "title": "AnsiblePlaybookUpdate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_live_traffic",
+      "method": "GET",
+      "path": "/api/traffic/live",
+      "scope": "ops:traffic:read",
+      "minimum_role": "viewer",
+      "description": "Live Traffic. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "since": {
+                "type": "number",
+                "minimum": 0,
+                "default": 0.0,
+                "title": "Since"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_traffic_history",
+      "method": "GET",
+      "path": "/api/traffic/history",
+      "scope": "ops:traffic:read",
+      "minimum_role": "viewer",
+      "description": "Traffic History. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "hours": {
+                "type": "integer",
+                "maximum": 720,
+                "minimum": 1,
+                "default": 24,
+                "title": "Hours"
+              },
+              "service": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                "default": "all",
+                "title": "Service"
+              },
+              "errors": {
+                "type": "boolean",
+                "default": false,
+                "title": "Errors"
+              },
+              "search": {
+                "type": "string",
+                "maxLength": 100,
+                "default": "",
+                "title": "Search"
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 100,
+                "title": "Limit"
+              },
+              "offset": {
+                "type": "integer",
+                "maximum": 500000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              },
+              "until": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Until"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_traffic_security",
+      "method": "GET",
+      "path": "/api/traffic/security",
+      "scope": "ops:traffic:read",
+      "minimum_role": "viewer",
+      "description": "Traffic Security. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "service": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                "default": "all",
+                "title": "Service"
+              },
+              "hours": {
+                "type": "integer",
+                "maximum": 720,
+                "minimum": 1,
+                "default": 24,
+                "title": "Hours"
+              },
+              "auth_result": {
+                "type": "string",
+                "pattern": "^(all|failed|success|vpn)$",
+                "default": "all",
+                "title": "Auth Result"
+              },
+              "auth_offset": {
+                "type": "integer",
+                "maximum": 500000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Auth Offset"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_review_traffic_security",
+      "method": "POST",
+      "path": "/api/traffic/security/{alert_id}/review",
+      "scope": "ops:traffic:write",
+      "minimum_role": "admin",
+      "description": "Review Traffic Security. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "alert_id": {
+                "type": "integer",
+                "title": "Alert Id"
+              }
+            },
+            "required": [
+              "alert_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_traffic_authentication_banner",
+      "method": "GET",
+      "path": "/api/traffic/security/banner",
+      "scope": "ops:traffic:read",
+      "minimum_role": "viewer",
+      "description": "Traffic Authentication Banner. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_settings",
+      "method": "GET",
+      "path": "/api/ai/collaboration/settings",
+      "scope": "ops:ai_collaboration:read",
+      "minimum_role": "viewer",
+      "description": "Settings. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_update_settings",
+      "method": "PUT",
+      "path": "/api/ai/collaboration/settings",
+      "scope": "ops:ai_collaboration:write",
+      "minimum_role": "admin",
+      "description": "Update Settings. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "revision": {
+                "type": "integer",
+                "minimum": 1.0,
+                "title": "Revision"
+              },
+              "policy": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "title": "Enabled",
+                    "default": false
+                  },
+                  "max_active_investigations": {
+                    "type": "integer",
+                    "maximum": 20.0,
+                    "minimum": 1.0,
+                    "title": "Max Active Investigations",
+                    "default": 4
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "maximum": 2000000.0,
+                    "minimum": 2000.0,
+                    "title": "Max Tokens",
+                    "default": 60000
+                  },
+                  "max_daily_tokens": {
+                    "type": "integer",
+                    "maximum": 20000000.0,
+                    "minimum": 2000.0,
+                    "title": "Max Daily Tokens",
+                    "default": 500000
+                  },
+                  "max_output_tokens": {
+                    "type": "integer",
+                    "maximum": 8192.0,
+                    "minimum": 128.0,
+                    "title": "Max Output Tokens",
+                    "default": 1500
+                  },
+                  "max_model_calls": {
+                    "type": "integer",
+                    "maximum": 100.0,
+                    "minimum": 1.0,
+                    "title": "Max Model Calls",
+                    "default": 12
+                  },
+                  "max_messages": {
+                    "type": "integer",
+                    "maximum": 200.0,
+                    "minimum": 2.0,
+                    "title": "Max Messages",
+                    "default": 24
+                  },
+                  "max_help_requests": {
+                    "type": "integer",
+                    "maximum": 30.0,
+                    "minimum": 0.0,
+                    "title": "Max Help Requests",
+                    "default": 4
+                  },
+                  "max_depth": {
+                    "type": "integer",
+                    "maximum": 4.0,
+                    "minimum": 1.0,
+                    "title": "Max Depth",
+                    "default": 2
+                  },
+                  "max_participants": {
+                    "type": "integer",
+                    "maximum": 10.0,
+                    "minimum": 1.0,
+                    "title": "Max Participants",
+                    "default": 4
+                  },
+                  "max_seconds": {
+                    "type": "integer",
+                    "maximum": 900.0,
+                    "minimum": 15.0,
+                    "title": "Max Seconds",
+                    "default": 300
+                  },
+                  "max_post_chars": {
+                    "type": "integer",
+                    "maximum": 8000.0,
+                    "minimum": 200.0,
+                    "title": "Max Post Chars",
+                    "default": 3000
+                  },
+                  "rules": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "maxItems": 30,
+                    "title": "Rules"
+                  },
+                  "agents": {
+                    "additionalProperties": {
+                      "properties": {
+                        "read": {
+                          "type": "boolean",
+                          "title": "Read",
+                          "default": true
+                        },
+                        "post": {
+                          "type": "boolean",
+                          "title": "Post",
+                          "default": true
+                        },
+                        "ask": {
+                          "type": "boolean",
+                          "title": "Ask",
+                          "default": true
+                        },
+                        "respond": {
+                          "type": "boolean",
+                          "title": "Respond",
+                          "default": true
+                        },
+                        "peers": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array",
+                          "maxItems": 30,
+                          "title": "Peers"
+                        },
+                        "tools": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array",
+                          "maxItems": 30,
+                          "title": "Tools"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "title": "AgentPermissions"
+                    },
+                    "type": "object",
+                    "maxProperties": 30,
+                    "title": "Agents"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "CollaborationPolicy"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "revision",
+              "policy"
+            ],
+            "title": "SettingsWrite"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_boards",
+      "method": "GET",
+      "path": "/api/ai/collaboration/boards",
+      "scope": "ops:ai_collaboration:read",
+      "minimum_role": "viewer",
+      "description": "Boards. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "default": 30,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_detail",
+      "method": "GET",
+      "path": "/api/ai/collaboration/boards/{task_id}",
+      "scope": "ops:ai_collaboration:read",
+      "minimum_role": "viewer",
+      "description": "Detail. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Task Id"
+              }
+            },
+            "required": [
+              "task_id"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_stop",
+      "method": "POST",
+      "path": "/api/ai/collaboration/boards/{task_id}/stop",
+      "scope": "ops:ai_collaboration:write",
+      "minimum_role": "operator",
+      "description": "Stop. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Task Id"
+              }
+            },
+            "required": [
+              "task_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_start",
+      "method": "POST",
+      "path": "/api/ai/collaboration/boards",
+      "scope": "ops:ai_collaboration:write",
+      "minimum_role": "operator",
+      "description": "Start. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "message": {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1,
+                "title": "Message"
+              },
+              "agent": {
+                "type": "string",
+                "title": "Agent",
+                "default": "coordinator"
+              },
+              "conversation_key": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Conversation Key"
+              }
+            },
+            "type": "object",
+            "required": [
+              "message"
+            ],
+            "title": "AskRequest"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_memory",
+      "method": "GET",
+      "path": "/api/ai/memory",
+      "scope": "ops:ai_memory:read",
+      "minimum_role": "viewer",
+      "description": "List Memory. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_set_preference",
+      "method": "PUT",
+      "path": "/api/ai/memory/preferences",
+      "scope": "ops:ai_memory:write",
+      "minimum_role": "operator",
+      "description": "Set Preference. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "title": "Enabled"
+              }
+            },
+            "type": "object",
+            "required": [
+              "enabled"
+            ],
+            "title": "PreferenceWrite"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_save_memory",
+      "method": "PUT",
+      "path": "/api/ai/memory",
+      "scope": "ops:ai_memory:write",
+      "minimum_role": "operator",
+      "description": "Save Memory. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "agent_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Agent Id"
+              },
+              "key": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "title": "Key"
+              },
+              "content": {
+                "type": "string",
+                "maxLength": 2000,
+                "minLength": 1,
+                "title": "Content"
+              }
+            },
+            "type": "object",
+            "required": [
+              "key",
+              "content"
+            ],
+            "title": "MemoryWrite"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_delete_memory",
+      "method": "DELETE",
+      "path": "/api/ai/memory/{memory_id}",
+      "scope": "ops:ai_memory:write",
+      "minimum_role": "operator",
+      "description": "Delete Memory. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "memory_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Memory Id"
+              }
+            },
+            "required": [
+              "memory_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_history",
+      "method": "GET",
+      "path": "/api/ai/history",
+      "scope": "ops:ai_memory:read",
+      "minimum_role": "viewer",
+      "description": "History. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "agent": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Agent"
+              },
+              "conversation_key": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Conversation Key"
+              },
+              "q": {
+                "type": "string",
+                "maxLength": 200,
+                "default": "",
+                "title": "Q"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "default": 30,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_list_providers",
+      "method": "GET",
+      "path": "/api/ai/providers",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "List Providers. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_create_provider",
+      "method": "POST",
+      "path": "/api/ai/providers",
+      "scope": "ops:ai:write",
+      "minimum_role": "admin",
+      "description": "Create Provider. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "slug": {
+                "type": "string",
+                "title": "Slug"
+              },
+              "kind": {
+                "type": "string",
+                "title": "Kind"
+              },
+              "display_name": {
+                "type": "string",
+                "title": "Display Name"
+              },
+              "base_url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Base Url"
+              },
+              "default_model": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Default Model"
+              }
+            },
+            "type": "object",
+            "required": [
+              "slug",
+              "kind",
+              "display_name"
+            ],
+            "title": "AIProviderCreate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_update_provider",
+      "method": "PATCH",
+      "path": "/api/ai/providers/{provider_id}",
+      "scope": "ops:ai:write",
+      "minimum_role": "admin",
+      "description": "Update Provider. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "provider_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Provider Id"
+              }
+            },
+            "required": [
+              "provider_id"
+            ]
+          },
+          "body": {
+            "properties": {
+              "display_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Display Name"
+              },
+              "base_url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Base Url"
+              },
+              "default_model": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Default Model"
+              },
+              "enabled": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Enabled"
+              }
+            },
+            "type": "object",
+            "title": "AIProviderUpdate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_agents",
+      "method": "GET",
+      "path": "/api/ai/agents",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "List Agents. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_create_agent",
+      "method": "POST",
+      "path": "/api/ai/agents",
+      "scope": "ops:ai:write",
+      "minimum_role": "admin",
+      "description": "Create Agent. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "slug": {
+                "type": "string",
+                "maxLength": 50,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_-]*$",
+                "title": "Slug"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Name"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "responsibility": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Responsibility"
+              },
+              "provider_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Provider Id"
+              },
+              "model": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Model"
+              },
+              "system_prompt": {
+                "type": "string",
+                "title": "System Prompt",
+                "default": ""
+              },
+              "allowed_tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "title": "Allowed Tools"
+              },
+              "allowed_hosts": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "title": "Allowed Hosts"
+              },
+              "allowed_environments": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "title": "Allowed Environments"
+              },
+              "autonomy_level": {
+                "type": "integer",
+                "title": "Autonomy Level",
+                "default": 0
+              },
+              "max_tool_calls": {
+                "type": "integer",
+                "title": "Max Tool Calls",
+                "default": 8
+              },
+              "max_execution_seconds": {
+                "type": "integer",
+                "title": "Max Execution Seconds",
+                "default": 90
+              },
+              "enabled": {
+                "type": "boolean",
+                "title": "Enabled",
+                "default": true
+              }
+            },
+            "type": "object",
+            "required": [
+              "slug",
+              "name"
+            ],
+            "title": "AIAgentCreate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_agent",
+      "method": "GET",
+      "path": "/api/ai/agents/{agent_id}",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "Get Agent. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Agent Id"
+              }
+            },
+            "required": [
+              "agent_id"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_update_agent",
+      "method": "PATCH",
+      "path": "/api/ai/agents/{agent_id}",
+      "scope": "ops:ai:write",
+      "minimum_role": "admin",
+      "description": "Update Agent. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Agent Id"
+              }
+            },
+            "required": [
+              "agent_id"
+            ]
+          },
+          "body": {
+            "properties": {
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Description"
+              },
+              "provider_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Provider Id"
+              },
+              "model": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Model"
+              },
+              "system_prompt": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "System Prompt"
+              },
+              "allowed_tools": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Allowed Tools"
+              },
+              "allowed_hosts": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Allowed Hosts"
+              },
+              "allowed_environments": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Allowed Environments"
+              },
+              "autonomy_level": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Autonomy Level"
+              },
+              "max_tool_calls": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Max Tool Calls"
+              },
+              "max_execution_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Max Execution Seconds"
+              },
+              "enabled": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Enabled"
+              }
+            },
+            "type": "object",
+            "title": "AIAgentUpdate"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_delete_agent",
+      "method": "DELETE",
+      "path": "/api/ai/agents/{agent_id}",
+      "scope": "ops:ai:write",
+      "minimum_role": "admin",
+      "description": "Delete Agent. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Agent Id"
+              }
+            },
+            "required": [
+              "agent_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_ask_ops_ai",
+      "method": "POST",
+      "path": "/api/ai/ask",
+      "scope": "ops:ai:write",
+      "minimum_role": "operator",
+      "description": "Ask Ops Ai. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "message": {
+                "type": "string",
+                "maxLength": 4000,
+                "minLength": 1,
+                "title": "Message"
+              },
+              "agent": {
+                "type": "string",
+                "title": "Agent",
+                "default": "coordinator"
+              },
+              "conversation_key": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Conversation Key"
+              }
+            },
+            "type": "object",
+            "required": [
+              "message"
+            ],
+            "title": "AskRequest"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_tasks",
+      "method": "GET",
+      "path": "/api/ai/tasks",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "List Tasks. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_usage_by_day",
+      "method": "GET",
+      "path": "/api/ai/usage",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "Usage By Day. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "days": {
+                "type": "integer",
+                "maximum": 90,
+                "minimum": 1,
+                "default": 7,
+                "title": "Days"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_cancel_task",
+      "method": "POST",
+      "path": "/api/ai/tasks/{task_id}/cancel",
+      "scope": "ops:ai:write",
+      "minimum_role": "operator",
+      "description": "Cancel Task. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Task Id"
+              }
+            },
+            "required": [
+              "task_id"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "ops_get_task",
+      "method": "GET",
+      "path": "/api/ai/tasks/{task_id}",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "Get Task. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Task Id"
+              }
+            },
+            "required": [
+              "task_id"
+            ]
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "ops_list_findings",
+      "method": "GET",
+      "path": "/api/ai/findings",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "List Findings. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_list_actions",
+      "method": "GET",
+      "path": "/api/ai/actions",
+      "scope": "ops:ai:read",
+      "minimum_role": "viewer",
+      "description": "List Actions. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              },
+              "task_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Task Id"
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ops_get_traffic_settings",
+      "method": "GET",
+      "path": "/api/settings/traffic",
+      "scope": "ops:settings:read",
+      "minimum_role": "admin",
+      "description": "Get Traffic Settings. Returns current operational data.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    {
+      "name": "ops_put_traffic_settings",
+      "method": "PUT",
+      "path": "/api/settings/traffic",
+      "scope": "ops:settings:write",
+      "minimum_role": "admin",
+      "description": "Put Traffic Settings. Requires human approval in Ops Center; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "properties": {
+              "revision": {
+                "type": "integer",
+                "minimum": 0.0,
+                "title": "Revision",
+                "default": 0
+              },
+              "enabled": {
+                "type": "boolean",
+                "title": "Enabled",
+                "default": false
+              },
+              "sources": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                      "title": "Id"
+                    },
+                    "label": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "minLength": 1,
+                      "title": "Label"
+                    },
+                    "host_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "title": "Host Id"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "npm",
+                        "caddy",
+                        "ssh",
+                        "auth_audit",
+                        "wireguard"
+                      ],
+                      "title": "Kind"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "title": "Enabled",
+                      "default": true
+                    },
+                    "use_sudo": {
+                      "type": "boolean",
+                      "title": "Use Sudo",
+                      "default": true
+                    },
+                    "log_path": {
+                      "type": "string",
+                      "maxLength": 400,
+                      "title": "Log Path",
+                      "default": ""
+                    },
+                    "domain": {
+                      "type": "string",
+                      "title": "Domain",
+                      "default": ""
+                    },
+                    "application": {
+                      "type": "string",
+                      "enum": [
+                        "generic",
+                        "jellyfin",
+                        "wg_easy"
+                      ],
+                      "title": "Application",
+                      "default": "generic"
+                    },
+                    "auth_domains": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array",
+                      "maxItems": 30,
+                      "title": "Auth Domains"
+                    },
+                    "container": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^(?:[a-zA-Z0-9][a-zA-Z0-9_.-]*)?$",
+                      "title": "Container",
+                      "default": ""
+                    },
+                    "interface": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,14}$",
+                      "title": "Interface",
+                      "default": "wg0"
+                    },
+                    "journal_unit": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.@-]{0,79}$",
+                      "title": "Journal Unit",
+                      "default": "sshd"
+                    },
+                    "ssh_failures": {
+                      "type": "boolean",
+                      "title": "Ssh Failures",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "label",
+                    "host_id",
+                    "kind"
+                  ],
+                  "title": "TrafficSourceConfig"
+                },
+                "type": "array",
+                "maxItems": 32,
+                "title": "Sources"
+              },
+              "allowed_countries": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 50,
+                "title": "Allowed Countries"
+              },
+              "trusted_dns": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 8,
+                "title": "Trusted Dns"
+              },
+              "retention_days": {
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "title": "Retention Days",
+                "default": 30
+              },
+              "max_rows": {
+                "type": "integer",
+                "maximum": 5000000.0,
+                "minimum": 1000.0,
+                "title": "Max Rows",
+                "default": 500000
+              },
+              "notify_authentication": {
+                "type": "boolean",
+                "title": "Notify Authentication",
+                "default": true
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "title": "TrafficSettingsConfig"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "body",
+          "idempotency_key"
+        ]
+      }
+    }
+  ],
+  "excluded": {
+    "POST /api/auth/login": "Identity and account administration use the web UI.",
+    "POST /api/auth/refresh": "Identity and account administration use the web UI.",
+    "GET /api/auth/me": "Identity and account administration use the web UI.",
+    "GET /api/users": "Identity and account administration use the web UI.",
+    "POST /api/users": "Identity and account administration use the web UI.",
+    "PATCH /api/users/{user_id}": "Identity and account administration use the web UI.",
+    "DELETE /api/users/{user_id}": "Identity and account administration use the web UI.",
+    "GET /api/credentials": "Credential material and credential administration remain human-only.",
+    "POST /api/credentials": "Credential material and credential administration remain human-only.",
+    "DELETE /api/credentials/{credential_id}": "Credential material and credential administration remain human-only.",
+    "GET /api/jobs/{job_id}/stream": "Use bounded status, log or task tools instead of streaming transports.",
+    "GET /api/vpn/peers/{peer_id}/config": "Credential material and credential administration remain human-only.",
+    "GET /api/cameras/{name}/stream.mjpeg": "Use bounded status, log or task tools instead of streaming transports.",
+    "GET /api/registries": "Credential material and credential administration remain human-only.",
+    "POST /api/registries": "Credential material and credential administration remain human-only.",
+    "DELETE /api/registries/{registry_id}": "Credential material and credential administration remain human-only.",
+    "GET /api/ai/agents/stream": "Use bounded status, log or task tools instead of streaming transports.",
+    "POST /api/ai/providers/{provider_id}/key": "Credential material and credential administration remain human-only.",
+    "DELETE /api/ai/providers/{provider_id}/key": "Credential material and credential administration remain human-only.",
+    "POST /api/ai/actions/{action_id}/approve": "Approval authority remains human-only.",
+    "POST /api/ai/actions/{action_id}/reject": "Approval authority remains human-only.",
+    "POST /api/integrations/talk/webhook": "Signed integration ingress is not an operational tool."
+  }
+}

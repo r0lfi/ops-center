@@ -8,6 +8,7 @@ from app.db.base import Base
 
 # Import models here so Base.metadata is fully populated for autogenerate.
 # (populated phase-by-phase as domain models are added)
+from app.models import mcp as _mcp_models
 from app.models import traffic as _traffic_models
 from app.models import ai_collaboration as _ai_collaboration_models
 from app.models import ai as _ai_models  # noqa: F401

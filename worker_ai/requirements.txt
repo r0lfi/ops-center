@@ -8,3 +8,6 @@ pydantic-settings==2.15.0
 # SDKs, matching the rest of the app's "raw httpx proxy" convention
 # (app/api/routes/metrics.py, logs.py, alerts.py all do the same).
 httpx==0.28.1
+
+# Standard MCP client for the shared operational tool broker.
+mcp==2.2.0

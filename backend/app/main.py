@@ -55,9 +55,17 @@ async def lifespan(_: FastAPI):
     await start_traffic_watch()
     from app.services.talk_watch import watch_loop
     talk_watch = asyncio.create_task(watch_loop())
+    from app.mcp.maintenance import run as maintain_mcp
+    mcp_maintenance = asyncio.create_task(maintain_mcp())
     try:
-        yield
+        async with contextlib.AsyncExitStack() as stack:
+            if mcp_server is not None:
+                await stack.enter_async_context(mcp_server.session_manager.run())
+            yield
     finally:
+        mcp_maintenance.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await mcp_maintenance
         await stop_traffic_watch()
         talk_watch.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -137,3 +145,13 @@ app.include_router(integrations.router, prefix="/api", tags=["integrations"])
 
 from app.api.routes import traffic_settings
 app.include_router(traffic_settings.router, prefix="/api", tags=["settings"], dependencies=_AUTH)
+
+from app.api.routes import mcp as mcp_routes
+from app.mcp.guard import MCPGuard
+app.include_router(mcp_routes.router, prefix="/api", tags=["mcp"], dependencies=_AUTH)
+app.add_middleware(MCPGuard)
+mcp_server = None
+if settings.mcp_public_url:
+    from app.mcp.server import create_server
+    mcp_server, mcp_app = create_server(app)
+    app.mount("/", mcp_app)

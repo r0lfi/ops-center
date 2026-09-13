@@ -50,6 +50,26 @@ Ops Center combines:
 
 > **About the screenshots:** The images below show the standard Ops Center interface with synthetic documentation data. They contain no real deployment, accounts, hostnames, traffic or logs. Populated examples are **not installation defaults**: new installations have no managed hosts, and traffic collection and collaboration start disabled. See [screenshot coverage and reproduction](docs/screenshots.md).
 
+## MCP access and existing AI agents
+
+Ops Center now exposes **113 reviewed operational tools through standard MCP**. External assistants and the existing Ops Floor agents can use the same Streamable HTTP endpoint. Agents, conversations and the Ops Floor UI remain in place.
+
+- **Access from the start:** administrator-managed clients, permitted users, explicit tool scopes and current-role enforcement.
+- **OAuth with PKCE:** exact callbacks, resource-bound tokens, selected-tool consent, expiry, rotating refresh tokens and revocation.
+- **Human control of changes:** encrypted pending arguments, exact-payload review, idempotency and a single execution claim.
+- **Existing agent integration:** expiring grants bind an agent to a task owner; agent tool and host restrictions still apply.
+- **Coverage:** inventory, Traffic Map, monitoring, logs, patching, security, containers, Ansible, cluster and AI operations, with policy resources and investigation prompts.
+
+The service starts disabled with **no clients or grants**. Credential material, identity administration and human approval authority remain in the authenticated UI. See [setup and security](docs/mcp.md), the [complete tool catalog](docs/mcp-tools.md), and [MCP release notes](docs/releases/2026-09-13-mcp.md). Migration **0042** and matching API, frontend and AI worker versions are required.
+
+All screenshots below show the real UI with **synthetic data only**. Example users, clients, hosts and domains have no connection to a running installation.
+
+| External client access | Ops Floor agent access |
+| --- | --- |
+| ![MCP client registration and tool permissions](docs/images/mcp-clients.png) | ![MCP agent and task-owner permissions](docs/images/mcp-agents.png) |
+| **OAuth consent** | **Human change approval** |
+| ![MCP consent with selected tools](docs/images/mcp-consent.png) | ![MCP exact-argument change approval](docs/images/mcp-approvals.png) |
+
 ## Release highlights — portable monitoring and PWA (2026-09-13)
 
 This source update adds configurable traffic and authentication monitoring,

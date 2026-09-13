@@ -662,7 +662,7 @@ async function apiFetch(path: string, options: RequestInit): Promise<Response> {
   }
 }
 
-async function apiGet<T>(path: string): Promise<T> {
+export async function apiGet<T>(path: string): Promise<T> {
   await renewSession();
   const token = getToken();
   const res = await apiFetch(path, { headers: authHeaders(token) });
@@ -673,7 +673,7 @@ async function apiGet<T>(path: string): Promise<T> {
   return res.json();
 }
 
-async function apiSend<T>(path: string, method: string, body?: unknown): Promise<T> {
+export async function apiSend<T>(path: string, method: string, body?: unknown): Promise<T> {
   if (path !== "/api/auth/login") await renewSession();
   const token = getToken();
   const res = await apiFetch(path, {

@@ -38,6 +38,7 @@ from worker_ai.ai.agent_state import set_agent_state
 from worker_ai.ai.memory import MEMORY_POLICY, MEMORY_SCHEMAS, memory_owner, note_context, recall, remember
 from worker_ai.ai.providers import ProviderError, build_provider
 from worker_ai.ai.tools import TOOL_REGISTRY, schemas_for
+from worker_ai.ai.mcp_client import MCP_SCHEMAS, call_tool as call_mcp_tool
 from worker_ai.ai.tools.exec_tools import TOOL_APPROVAL_LEVEL
 
 DISPATCH_TOOL_NAME = "dispatch_to_agent"
@@ -233,9 +234,11 @@ def _run_agent(db: Session, agent: AIAgent, input_message: str, *, task_id: str 
     allowed_tools = collaboration.allowed_tools(agent) if collaboration else list(agent.allowed_tools or [])
     task = db.get(AITask, task_id) if task_id else None
     if task is not None and task.source == "schedule":
-        allowed_tools = [name for name in allowed_tools if name not in TOOL_APPROVAL_LEVEL and name != DISPATCH_TOOL_NAME]
+        allowed_tools = [name for name in allowed_tools if name not in TOOL_APPROVAL_LEVEL and name != DISPATCH_TOOL_NAME and name not in MCP_SCHEMAS]
     is_coordinator = DISPATCH_TOOL_NAME in allowed_tools
     tool_schemas = schemas_for([t for t in allowed_tools if t != DISPATCH_TOOL_NAME])
+    if not collaboration:
+        tool_schemas += [MCP_SCHEMAS[t] for t in allowed_tools if t in MCP_SCHEMAS]
     if is_coordinator:
         available = list(
             db.execute(
@@ -359,6 +362,11 @@ def _run_agent(db: Session, agent: AIAgent, input_message: str, *, task_id: str 
                     agents_used.extend(sub_result.agents_used)
                     data_sources.update(sub_result.data_sources)
                     output = {"agent": sub_slug, "answer": sub_result.text}
+            elif call.name in allowed_tools and call.name in MCP_SCHEMAS and not collaboration:
+                output = call_mcp_tool(db, agent, task_id, call.name, call.arguments)
+                # Tool inputs can contain private operational data; record metadata only.
+                tools_used.append({"tool": call.name, "arguments": {"transport": "mcp"}})
+                data_sources.add("Ops Center MCP")
             elif call.name in allowed_tools and call.name in TOOL_APPROVAL_LEVEL:
                 # Write/execute tool - never runs here. Creates a pending
                 # AIAction; the real execution only ever happens later,

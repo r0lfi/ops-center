@@ -26,7 +26,8 @@ export default function Login() {
     setError(null);
     try {
       await login(username, password);
-      navigate(location.state?.from?.pathname ?? "/", { replace: true });
+      const from = location.state?.from;
+      navigate(from ? from.pathname + from.search + from.hash : "/", { replace: true });
     } catch {
       setError("Invalid username or password");
     } finally {

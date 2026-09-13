@@ -83,3 +83,16 @@ only its exact SHA-256 entry in `scripts/check-release.py`. The release policy
 accepts these specific reviewed bytes and rejects an altered image or an image at
 an unreviewed path. Keep the README references and this coverage table in sync,
 and run the release policy and Gitleaks before publishing.
+
+## MCP screenshots
+
+The MCP client, agent access, consent and change-approval images use only synthetic data.
+They are captured from the actual UI by `frontend/scripts/capture-mcp.mjs` after building the frontend.
+Run `node scripts/capture-mcp.mjs` from `frontend/`; set `MCP_SCREENSHOT_OUTPUT` to choose the output directory.
+The script serves a local production build, intercepts every API request with synthetic fixtures, and crops the relevant UI.
+It hides the unrelated floating chat shortcut in cropped cards. No live environment, real user, token, host or log is used.
+
+- `docs/images/mcp-clients.png`: client registration, exact callback, users and tool permissions.
+- `docs/images/mcp-agents.png`: the existing agent and task owner, duration and permitted MCP tools.
+- `docs/images/mcp-consent.png`: user consent with a selected tool subset.
+- `docs/images/mcp-approvals.png`: a pending synthetic container restart and exact-argument review.

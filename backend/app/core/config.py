@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     database_url_sync: str
     redis_url: str
 
+    mcp_public_url: str = ""
+    mcp_allowed_origins: list[str] = Field(default_factory=list)
+
     app_name: str = "Ops Center"
     app_version: str = "0.1.0"
 

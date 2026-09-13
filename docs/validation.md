@@ -110,3 +110,15 @@ Before publishing, stage only reviewed sources, run `python scripts/check-releas
 and `gitleaks git --staged --redact`, then commit. `python scripts/package.py
 /tmp/ops-center-source.tar.gz` packages indexed source files without Git history,
 local settings, credentials, installed dependencies or runtime/test artifacts.
+
+## MCP verification — 2026-09-13
+
+- 326 Python tests passed with dedicated disposable PostgreSQL databases, including OAuth/PKCE, resource and role enforcement, token rotation/replay, exact-payload approvals, duplicate execution prevention, agent/task/host boundaries and existing collaboration/Ansible behavior.
+- 75 browser tests passed across desktop, mobile, tablet and WebKit configurations. This includes ten MCP client, consent, approval, login-return and agent-grant cases.
+- Frontend production build and lint completed; lint retains seven pre-existing warnings outside the MCP changes.
+- Backend and AI-worker dependency audits, plus npm audit, found no known vulnerabilities.
+- Migration 0042 upgraded, rolled back to 0041 and upgraded again successfully in an isolated test database.
+- API and AI-worker container images built successfully. A real SDK call between the two isolated containers verified task-bound access, linked audit records, token consumption after use and immediate grant revocation.
+- Four screenshots were captured from the actual UI using only synthetic fixtures and visually reviewed.
+
+These checks do not substitute for configuring an installation's HTTPS endpoint, client registrations, grants and reverse-proxy rules.

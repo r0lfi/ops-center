@@ -26,6 +26,8 @@ import DockerHostDetail from "@/pages/DockerHostDetail";
 import HostMetricsDetail from "@/pages/HostMetricsDetail";
 import JobDetail from "@/pages/JobDetail";
 import Jobs from "@/pages/Jobs";
+import MCPAccess from "@/pages/MCPAccess";
+import MCPConsent from "@/pages/MCPConsent";
 import Login from "@/pages/Login";
 import Logs from "@/pages/Logs";
 import Monitoring from "@/pages/Monitoring";
@@ -51,6 +53,7 @@ export default function App() {
     <Routes>
       <Route path="login" element={<Login />} />
       <Route element={<ProtectedRoute />}>
+        <Route path="mcp/consent" element={<MCPConsent />} />
         {/* No sidebar/chrome - meant to be opened fullscreen on a wall-mounted monitor */}
         <Route path="wallboard" element={<Wallboard />} />
         <Route path="cameras/wallboard" element={<CameraWallboard />} />
@@ -95,6 +98,7 @@ export default function App() {
           <Route path="jobs/:id" element={<JobDetail />} />
           <Route path="cluster" element={<Cluster />} />
           <Route path="vpn" element={<Vpn />} />
+          <Route path="mcp-access" element={<MCPAccess />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>

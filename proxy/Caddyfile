@@ -13,6 +13,11 @@
 		respond "ok" 200
 	}
 
+	@mcp path /mcp /authorize /token /revoke /.well-known/oauth-authorization-server /.well-known/oauth-protected-resource/mcp
+	handle @mcp {
+		reverse_proxy ops-api:8000
+	}
+
 	handle /api/* {
 		reverse_proxy ops-api:8000
 	}

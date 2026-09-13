@@ -63,6 +63,7 @@ const NAV_ITEMS_AFTER_AI: NavItem[] = [
   { label: "Jobs", to: "/jobs", icon: AlertTriangle },
   { label: "Cluster", to: "/cluster", icon: Network },
   { label: "VPN", to: "/vpn", icon: Wifi },
+  { label: "MCP access", to: "/mcp-access", icon: Cog },
   { label: "Settings", to: "/settings", icon: Cog },
 ];
 

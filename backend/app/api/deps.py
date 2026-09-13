@@ -15,6 +15,15 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    principal = request.scope.get("ops_mcp_principal")
+    if principal is not None:
+        from app.mcp.broker import INTERNAL_PRINCIPAL
+        if isinstance(principal, tuple) and principal[0] is INTERNAL_PRINCIPAL:
+            user = await db.get(User, principal[1])
+            if user is None or not user.is_active:
+                raise HTTPException(401, "MCP user is inactive")
+            request.state.current_user = user
+            return user
     if credentials is None:
         raise HTTPException(status_code=401, detail="not authenticated")
 

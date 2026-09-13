@@ -33,3 +33,10 @@ pyyaml==6.0.3
 # external API call per request. Same file format MaxMind's GeoLite2 uses,
 # so this reader works for either source.
 maxminddb==3.1.1
+
+# Standard MCP transport and OAuth validation.
+mcp==2.2.0
+jsonschema==4.26.0
+
+# Encrypt pending MCP approval payloads at rest.
+cryptography==50.0.1

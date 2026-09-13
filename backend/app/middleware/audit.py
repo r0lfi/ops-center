@@ -9,7 +9,7 @@ from app.models.audit import AuditLogEntry
 from app.services.auth import decode_access_token
 
 _REDACT_KEYS = ("password", "access_token", "token", "secret", "confirm", "credential", "key", "apikey")
-_SKIP_PATH_PREFIXES = ("/api/health", "/api/docs", "/api/redoc", "/api/openapi.json")
+_SKIP_PATH_PREFIXES = ("/api/mcp/","/api/health", "/api/docs", "/api/redoc", "/api/openapi.json")
 
 
 def _redact(value):
@@ -53,6 +53,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         should_audit = (
             request.url.path.startswith("/api/")
             and request.method != "GET"
+            and "ops_mcp_principal" not in request.scope
             and not request.url.path.startswith(_SKIP_PATH_PREFIXES)
         )
 

@@ -82,6 +82,8 @@ services:
     environment:
       OPS_CENTER_ENV: ${OPS_CENTER_ENV:-production}
       API_SECRET_KEY: ${API_SECRET_KEY:?Run the installer to generate API_SECRET_KEY}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-[]}
       TALK_MEMORY_BINDINGS: ${TALK_MEMORY_BINDINGS:-[]}
       TALK_BACKEND_URL: ${TALK_BACKEND_URL:-}
       TALK_NOTIFICATIONS_ENABLED: ${TALK_NOTIFICATIONS_ENABLED:-false}
@@ -217,6 +219,8 @@ services:
     environment:
       OPS_CENTER_ENV: ${OPS_CENTER_ENV:-production}
       API_SECRET_KEY: ${API_SECRET_KEY:?Run the installer to generate API_SECRET_KEY}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-[]}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
         the installer to generate POSTGRES_PASSWORD}@${DATABASE_HOST:-postgres}:5432/${POSTGRES_DB}
       DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
@@ -275,6 +279,8 @@ services:
     environment:
       OPS_CENTER_ENV: ${OPS_CENTER_ENV:-production}
       API_SECRET_KEY: ${API_SECRET_KEY:?Run the installer to generate API_SECRET_KEY}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-[]}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
         the installer to generate POSTGRES_PASSWORD}@${DATABASE_HOST:-postgres}:5432/${POSTGRES_DB}
       DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
@@ -313,6 +319,8 @@ services:
     environment:
       OPS_CENTER_ENV: ${OPS_CENTER_ENV:-production}
       API_SECRET_KEY: ${API_SECRET_KEY:?Run the installer to generate API_SECRET_KEY}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-[]}
       TALK_MEMORY_BINDINGS: ${TALK_MEMORY_BINDINGS:-[]}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
         the installer to generate POSTGRES_PASSWORD}@${DATABASE_HOST:-postgres}:5432/${POSTGRES_DB}
@@ -509,6 +517,8 @@ services:
     environment:
       OPS_CENTER_ENV: ${OPS_CENTER_ENV:-production}
       API_SECRET_KEY: ${API_SECRET_KEY:?Run the installer to generate API_SECRET_KEY}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-[]}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
         the installer to generate POSTGRES_PASSWORD}@${DATABASE_HOST:-postgres}:5432/${POSTGRES_DB}
       DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
