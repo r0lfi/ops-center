@@ -48,6 +48,8 @@ Ops Center combines:
 
 ---
 
+> **About the screenshots:** The images below show the standard Ops Center interface with synthetic documentation data. They contain no real deployment, accounts, hostnames, traffic or logs. Populated examples are **not installation defaults**: new installations have no managed hosts, and traffic collection and collaboration start disabled. See [screenshot coverage and reproduction](docs/screenshots.md).
+
 ## Release highlights — portable monitoring and PWA (2026-09-13)
 
 This source update adds configurable traffic and authentication monitoring,
@@ -97,6 +99,10 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 
 ## ✨ Features
 
+![Overview dashboard with three example hosts and synthetic health metrics](docs/images/features/overview.png)
+
+The overview brings example fleet health, resource usage and operational status into one page.
+
 ### Infrastructure
 
 - Linux server inventory
@@ -107,6 +113,19 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Infrastructure task execution
 - Managed SSH fingerprint verification before sending credentials
 
+<details>
+<summary>Screenshots: server inventory and Docker workloads</summary>
+
+![Server inventory showing documentation-only hosts](docs/images/features/servers.png)
+
+Server inventory with example hosts, reachability and management controls.
+
+![Docker workload cards for synthetic containers](docs/images/features/containers.png)
+
+Container status and resource usage grouped by example Docker host.
+
+</details>
+
 ### Automation
 
 - Ansible execution worker
@@ -115,6 +134,19 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Remote task execution
 - Scheduled operations
 - Single-approval disk expansion with preview, capacity checks and resumable requests
+
+<details>
+<summary>Screenshots: Ansible automation and patch management</summary>
+
+![Automation page displaying the public health-check playbook](docs/images/features/automation.png)
+
+Browse the bundled read-only health-check playbook and automation actions. No playbook was executed for this image.
+
+![Patch groups and an example pending security package update](docs/images/features/patching.png)
+
+Review a synthetic security update and a patch group with scheduling disabled.
+
+</details>
 
 ### Monitoring
 
@@ -128,6 +160,19 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Authentication observations, security alerts and collection health
 - Dedicated Traffic Map wallboard for desktop, tablet and installed PWA
 
+<details>
+<summary>Screenshots: monitoring and logs</summary>
+
+![Monitoring dashboard with synthetic service probes and host metrics](docs/images/features/monitoring.png)
+
+Service availability, probe latency and fleet resource charts from example data.
+
+![Log viewer displaying generated example health messages](docs/images/features/logs.png)
+
+Searchable log view populated only with generated documentation messages.
+
+</details>
+
 ### Security
 
 - Trivy vulnerability scanning
@@ -135,6 +180,15 @@ The goal is not simply to create another dashboard. The goal is to build a **sel
 - Container security operations
 - Infrastructure findings
 - Vulnerability visibility
+
+<details>
+<summary>Screenshot: vulnerability management</summary>
+
+![Vulnerability page with one fictional advisory](docs/images/features/security.png)
+
+A fictional advisory demonstrates severity, package fixes and affected-host visibility.
+
+</details>
 
 ### 🛡️ High Availability / Cluster
 
@@ -162,6 +216,15 @@ HA monitoring storage is also not shared automatically; Prometheus, Loki and rel
 
 See **[HA / cluster deployment](docs/ha.md)** for the complete topology, network boundaries, failover tests, backup guidance and upgrade procedure.
 
+<details>
+<summary>Screenshot: HA cluster status</summary>
+
+![Synthetic PostgreSQL and Redis high-availability status](docs/images/features/cluster.png)
+
+Example PostgreSQL primary/replica roles and Redis Sentinel health. The topology and addresses are documentation data.
+
+</details>
+
 ### AI
 
 AI functionality is optional — **Ops Center can operate without an AI provider configured**.
@@ -172,6 +235,15 @@ Administrators can also enable private collaboration investigations with selecte
 agents, explicit diagnostic tools and configurable budgets. Each investigation
 records questions, evidence and the lead agent's response. See
 [Agent collaboration](#agent-collaboration).
+
+<details>
+<summary>Screenshot: specialist agents</summary>
+
+![Six example specialist agents with configured responsibilities](docs/images/features/agents.png)
+
+Agent responsibilities, status, model settings and allowed tools, using a fictional provider.
+
+</details>
 
 ---
 
@@ -653,6 +725,10 @@ search term; inspect the timeline, country/domain summaries and collection
 status. The backend keeps collecting while the page is closed or the map is
 paused. A failed reader is shown as unavailable.
 
+![Traffic Map wallboard with synthetic observations and example destinations](docs/images/features/traffic-map.png)
+
+The wallboard shows fictional traffic flows, authentication observations, country counts and an activity timeline. Destination markers use example locations; map data is © OpenStreetMap contributors.
+
 Supported sources use your registered servers and managed SSH credentials:
 
 | Source | What to configure | What it observes |
@@ -687,6 +763,15 @@ locks support collection across HA API nodes.
 See the [Traffic Map guide](docs/traffic-map.md) for reader prerequisites,
 audit-log format, trust behavior, retention, privacy and collection diagnostics.
 
+<details>
+<summary>Screenshot: authentication evidence and security alerts</summary>
+
+![Authentication observations and a synthetic untrusted-origin alert](docs/images/features/login-events.png)
+
+Review example application logins, VPN handshakes and the evidence behind an alert.
+
+</details>
+
 ## Configure your own monitoring
 
 Fresh installations start with traffic collection disabled and no sources or
@@ -718,6 +803,15 @@ remain deployment configuration described in [`.env.example`](.env.example)
 and [the integration guide](docs/integrations.md). Keep credentials, generated
 inventories and runtime state outside Git.
 
+<details>
+<summary>Screenshot: Traffic Map and authentication settings</summary>
+
+![Traffic settings with one synthetic Nginx Proxy Manager source](docs/images/features/traffic-settings.png)
+
+An example source shows the server selector, reader, log path, trust settings and retention controls. Collection is enabled only in this documentation fixture; it is disabled on a fresh installation.
+
+</details>
+
 ## Progressive Web App
 
 Ops Center supports ordinary responsive browsing and optional installation on
@@ -745,6 +839,19 @@ when configuring a reverse proxy. Deployment at the site root is supported.
 See [PWA behavior and deployment](docs/pwa.md) for browser requirements,
 update handling and tests.
 
+<details>
+<summary>Screenshots: installation help and offline protection</summary>
+
+![Ops Center Add to Home Screen help dialog](docs/images/features/pwa-install.png)
+
+The app's iPhone/iPad installation guide, rendered in an emulated browser. This is the in-app guide, not a capture of the operating system installation dialog.
+
+![Offline overlay hiding previously loaded infrastructure data](docs/images/features/pwa-offline.png)
+
+The explicit offline state hides live status until a working backend connection is restored. The documentation fixture triggers this state without contacting a real backend.
+
+</details>
+
 ## Agent collaboration
 
 Administrators can enable **AI Agents → Collaboration settings**, select a lead
@@ -756,6 +863,10 @@ results. Only the addressed helper runs, one at a time, within the configured
 depth; the lead combines the findings. Other users, including other
 administrators, cannot read the investigation's content.
 
+![Private collaboration board with a synthetic three-agent investigation](docs/images/features/collaboration.png)
+
+An example investigation shows addressed questions, evidence and separate charged/reported token usage. The transcript is written for documentation; no AI provider was called.
+
 Controls include per-investigation and daily token budgets, output/model-call
 limits, messages, help requests, participants, time and concurrency. Backend
 permissions enforce the allowed peers, tools and host scopes. Permission
@@ -766,6 +877,15 @@ Collaboration starts disabled. Its tools are diagnostic: operational changes
 still use the existing action-approval workflow. Boards do not automatically
 join ordinary chat, Talk or scheduled jobs. See
 [collaboration setup and limits](docs/agent-collaboration.md).
+
+<details>
+<summary>Screenshot: collaboration budgets and permissions</summary>
+
+![Collaboration settings with sample budgets and agent permissions](docs/images/features/collaboration-settings.png)
+
+Example limits and explicit partner/tool grants. Collaboration remains opt-in and starts disabled on new installations.
+
+</details>
 
 ## Managed disk expansion
 
@@ -786,6 +906,15 @@ LVM LV with one PV. Unsupported or ambiguous layouts are refused. The workflow
 does not install missing tools, reboot, shrink or reformat disks. Read
 [managed disk expansion](docs/disk-expansion.md) for prerequisites, supported
 Proxmox storage, capacity rules and recovery steps before using it.
+
+<details>
+<summary>Screenshot: disk expansion approval</summary>
+
+![Pending approval for a fictional 10 GiB disk expansion](docs/images/features/disk-expansion.png)
+
+A synthetic pending request shows the target, increment and risk before approval. No storage operation or infrastructure command was run.
+
+</details>
 
 ## Integration and access updates
 
@@ -808,6 +937,15 @@ Proxmox storage, capacity rules and recovery steps before using it.
 
 See [optional integrations](docs/integrations.md) and
 [agent history and memory](docs/agent-memory.md) for account binding and privacy.
+
+<details>
+<summary>Screenshot: optional VPN integration</summary>
+
+![VPN page displaying fictional WireGuard peers](docs/images/features/vpn.png)
+
+Example peer status, handshake ages and transfer counters. The capture has no VPN configuration or access to a real tunnel.
+
+</details>
 
 ## Upgrading this release
 
