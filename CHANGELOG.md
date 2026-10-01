@@ -11,6 +11,8 @@ uses it as the release notes and refuses a tag without one. See
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-02
+
 First versioned release. Earlier changes were published without version
 numbers; see the Git history and
 [docs/releases](https://github.com/r0lfi/ops-center/tree/main/docs/releases).
@@ -35,3 +37,6 @@ numbers; see the Git history and
   published release is the same command as installing it.
 - The manual "Build or publish images" workflow is replaced by the release
   workflow; `scripts/images.sh` still builds and pushes images by hand.
+
+[Unreleased]: https://github.com/r0lfi/ops-center/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/r0lfi/ops-center/releases/tag/v0.1.0
