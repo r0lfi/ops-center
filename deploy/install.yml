@@ -143,6 +143,15 @@
       register: ops_env_result
       changed_when: "'Created .env' in ops_env_result.stdout"
       no_log: true
+    - name: Point an existing installation at the requested published images
+      # .env is otherwise never rewritten, so an upgrade would keep pulling the
+      # old tag. Only when images are pulled: a local build keeps its own tag.
+      ansible.builtin.lineinfile:
+        path: "{{ ops_install_dir }}/.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+      loop: "{{ {'IMAGE_PREFIX': ops_image_prefix, 'IMAGE_TAG': ops_image_tag} | dict2items }}"
+      when: not ops_build_images | bool
     - name: Protect runtime environment file
       ansible.builtin.file:
         path: "{{ ops_install_dir }}/.env"

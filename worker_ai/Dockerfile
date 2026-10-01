@@ -46,6 +46,18 @@ RUN mkdir -p /app/run && chown -R opsaiworker:opsaiworker /app
 
 USER opsaiworker
 
+# Release metadata, stamped by .github/workflows/release.yml. Declared last so a
+# new version does not invalidate the cached layers above. The defaults mark a
+# local build as a development build instead of letting it claim a release.
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="Ops Center AI worker" \
+      org.opencontainers.image.description="Ops Center AI agent worker" \
+      org.opencontainers.image.source="https://github.com/r0lfi/ops-center" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+
 # --concurrency=4: an agent run is mostly waiting on LLM/HTTP round trips
 # and Ansible-job polling, not CPU, so more than one can usefully overlap
 # per worker without the zombie-process risk ops-worker has (this worker

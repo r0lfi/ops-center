@@ -29,4 +29,16 @@ EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=10s \
     CMD curl -fsS http://localhost:8080/healthz || exit 1
 
+# Release metadata, stamped by .github/workflows/release.yml. Declared last so a
+# new version does not invalidate the cached layers above. The defaults mark a
+# local build as a development build instead of letting it claim a release.
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="Ops Center frontend" \
+      org.opencontainers.image.description="Ops Center web interface served by Nginx" \
+      org.opencontainers.image.source="https://github.com/r0lfi/ops-center" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+
 CMD ["nginx", "-g", "daemon off;"]

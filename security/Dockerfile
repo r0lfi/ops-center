@@ -50,4 +50,16 @@ RUN mkdir -p /home/opssecurity/.cache/trivy /data/docker-stacks && \
 
 USER opssecurity
 
+# Release metadata, stamped by .github/workflows/release.yml. Declared last so a
+# new version does not invalidate the cached layers above. The defaults mark a
+# local build as a development build instead of letting it claim a release.
+ARG VERSION=0.0.0-dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="Ops Center security worker" \
+      org.opencontainers.image.description="Ops Center security scanning and Docker operations worker" \
+      org.opencontainers.image.source="https://github.com/r0lfi/ops-center" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+
 CMD ["celery", "-A", "security.celery_app:celery_app", "worker", "--loglevel=info", "--concurrency=1", "-Q", "security"]

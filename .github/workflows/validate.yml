@@ -1,5 +1,12 @@
 name: Validate source
-on: [push, pull_request, workflow_dispatch]
+on:
+  # Branches only: a pushed v* tag is validated by release.yml, which calls
+  # this workflow before it publishes anything.
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -131,3 +138,83 @@ jobs:
         run: PYTHONPATH=backend:. python -m pytest backend/tests/test_mcp_integration.py backend/tests/test_mcp_catalog.py -q
       - name: Verify MCP rollback and upgrade
         run: cd backend && alembic downgrade 0041 && alembic upgrade head
+
+  images:
+    # Every application image must build on every change, not only at release
+    # time. Nothing is pushed here; the layer cache is shared with release.yml.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {image: api, context: backend, file: backend/Dockerfile}
+          - {image: frontend, context: frontend, file: frontend/Dockerfile}
+          - {image: worker, context: '.', file: worker/Dockerfile}
+          - {image: ai-worker, context: '.', file: worker_ai/Dockerfile}
+          - {image: security-worker, context: '.', file: security/Dockerfile}
+          - {image: postgres-ha, context: ha/postgres, file: ha/postgres/Dockerfile}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: false
+          build-args: |
+            REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  stack:
+    # The whole standard stack from images built from this commit: health
+    # checks, web interface, login and persistence across a restart. A release
+    # runs the same test against the exact images it publishes instead.
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          load: true
+          tags: ops-center/api:ci
+          cache-from: type=gha,scope=api
+      - uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          load: true
+          tags: ops-center/frontend:ci
+          cache-from: type=gha,scope=frontend
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: worker/Dockerfile
+          load: true
+          tags: ops-center/worker:ci
+          cache-from: type=gha,scope=worker
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: worker_ai/Dockerfile
+          load: true
+          tags: ops-center/ai-worker:ci
+          cache-from: type=gha,scope=ai-worker
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: security/Dockerfile
+          load: true
+          tags: ops-center/security-worker:ci
+          cache-from: type=gha,scope=security-worker
+      - name: Smoke test
+        env:
+          IMAGE_PREFIX: ops-center
+          IMAGE_TAG: ci
+          SMOKE_VERSION: 0.0.0-dev
+        run: bash scripts/test/smoke-stack.sh

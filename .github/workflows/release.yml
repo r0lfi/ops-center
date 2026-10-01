@@ -1,0 +1,213 @@
+# Publish a release when a version tag is pushed:
+#
+#   git tag -a v0.1.0 -m "Ops Center 0.1.0"
+#   git push origin v0.1.0
+#
+# validate -> build candidate images -> run the stack from them -> tag the
+# tested images -> create the GitHub Release. A failure at any step stops
+# everything after it, so no release, version tag or `latest` points at
+# images that did not pass.
+#
+# Tag policy, for each of ghcr.io/<owner>/ops-center/<component>:
+#   v1.2.3         -> 1.2.3, v1.2.3, 1.2, 1, latest
+#   v1.2.3-rc.1    -> 1.2.3-rc.1, v1.2.3-rc.1 only (no latest, no 1.2, no 1)
+#   every release  -> sha-<commit>, the candidate the smoke test ran
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Check tag and changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      prefix: ${{ steps.prefix.outputs.prefix }}
+      candidate: ${{ steps.prefix.outputs.candidate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Fails on a malformed tag or a missing CHANGELOG.md section.
+      - name: Parse tag
+        id: tag
+        run: python3 scripts/release-notes.py check "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      # Releases are cut from main, so a tag on an unmerged branch cannot
+      # publish code that was never reviewed there.
+      - name: Require the tagged commit to be on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      # OCI image references must be lowercase; a GitHub owner need not be.
+      - name: Resolve image names
+        id: prefix
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "prefix=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "candidate=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+  validate:
+    name: Validate
+    uses: ./.github/workflows/validate.yml
+
+  build:
+    name: Build ${{ matrix.image }}
+    needs: [prepare, validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - {image: api, context: backend, file: backend/Dockerfile}
+          - {image: frontend, context: frontend, file: frontend/Dockerfile}
+          - {image: worker, context: '.', file: worker/Dockerfile}
+          - {image: ai-worker, context: '.', file: worker_ai/Dockerfile}
+          - {image: security-worker, context: '.', file: security/Dockerfile}
+          - {image: postgres-ha, context: ha/postgres, file: ha/postgres/Dockerfile}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed only under the commit tag. Version tags are added after the
+      # smoke test, to exactly these images, without rebuilding them.
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ needs.prepare.outputs.prefix }}/${{ matrix.image }}:${{ needs.prepare.outputs.candidate }}
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+            REVISION=${{ github.sha }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  smoke:
+    name: Run the stack from the candidate images
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The whole standard stack, including monitoring and the vulnerability
+      # scanner: health checks, web interface, login, and data surviving a
+      # full restart. See scripts/test/smoke-stack.sh.
+      - name: Smoke test
+        env:
+          IMAGE_PREFIX: ${{ needs.prepare.outputs.prefix }}
+          IMAGE_TAG: ${{ needs.prepare.outputs.candidate }}
+          SMOKE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: bash scripts/test/smoke-stack.sh
+
+  publish:
+    name: Tag ${{ matrix.image }}
+    needs: [prepare, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    strategy:
+      matrix:
+        image: [api, frontend, worker, ai-worker, security-worker, postgres-ha]
+    steps:
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.prepare.outputs.prefix }}/${{ matrix.image }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.prepare.outputs.prerelease == 'false' }}
+            type=semver,pattern={{major}},enable=${{ needs.prepare.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.prerelease == 'false' }}
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Adds tags to the tested manifest in the registry: same digest, same
+      # provenance and SBOM, nothing rebuilt.
+      - name: Tag the tested image
+        env:
+          SOURCE: ${{ needs.prepare.outputs.prefix }}/${{ matrix.image }}:${{ needs.prepare.outputs.candidate }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          args=()
+          while IFS= read -r tag; do [[ -n "$tag" ]] && args+=(--tag "$tag"); done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" "$SOURCE"
+          {
+            echo "### ${{ matrix.image }}"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: GitHub Release
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Write release notes
+        env:
+          PREFIX: ${{ needs.prepare.outputs.prefix }}
+        run: |
+          previous="$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          python3 scripts/release-notes.py notes "$GITHUB_REF_NAME" "$PREFIX" "$previous" > "$RUNNER_TEMP/notes.md"
+
+      # GitHub's generated notes are appended; they list pull requests and
+      # new contributors once those exist.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          flags=()
+          [[ "$PRERELEASE" == true ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "Ops Center $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --generate-notes \
+            "${flags[@]}"

@@ -390,8 +390,11 @@ Allow additional storage for metrics retention and container image caches.
 
 ### 1. Clone Ops Center
 
+Check out a release, so the configuration files match the images you run
+(see [Releases](https://github.com/r0lfi/ops-center/releases) for the newest):
+
 ```bash
-git clone https://github.com/r0lfi/ops-center.git
+git clone --branch v0.1.0 https://github.com/r0lfi/ops-center.git
 cd ops-center
 ```
 
@@ -399,15 +402,23 @@ cd ops-center
 
 The default inventory installs Ops Center on the machine running the installer.
 
+**From published images** (recommended; nothing is compiled on the server):
+
+```bash
+bash scripts/install.sh --ask-become-pass \
+  -e ops_build_images=false \
+  -e ops_image_prefix=ghcr.io/r0lfi/ops-center \
+  -e ops_image_tag=0.1.0
+```
+
+**Or build the images from this checkout** (the default, and the only option
+for unreleased code on `main`):
+
 ```bash
 bash scripts/install.sh --ask-become-pass
 ```
 
-For passwordless sudo:
-
-```bash
-bash scripts/install.sh
-```
+Without `--ask-become-pass` the installer expects passwordless sudo.
 
 During installation, choose an Ops Center administrator username and a password of at least 12 characters.
 
@@ -416,7 +427,7 @@ The installer:
 1. Installs and starts Docker Engine and Compose from Docker's official RPM repository.
 2. Copies Ops Center to `/opt/ops-center` and creates persistent storage under `/var/lib/ops-center`.
 3. Generates PostgreSQL, Redis, API-signing and Grafana credentials in `/opt/ops-center/.env` with mode `0600`.
-4. Builds the application images and downloads upstream service images.
+4. Pulls the published application images, or builds them, and downloads upstream service images.
 5. Starts the services, runs database migrations and waits for health checks.
 6. Creates the initial administrator account and stores its password as a hash in PostgreSQL.
 
@@ -512,48 +523,155 @@ For network requirements, port restrictions, startup order, switchover testing, 
 
 ---
 
-## 🐳 Container Images
+## 🐳 Container Images and Releases
 
-Ops Center builds these custom application images:
+Every release is published to the GitHub Container Registry. Ops Center is a
+multi-service stack, so there is one image per application component rather
+than a single image:
 
 | Image | Purpose |
 | --- | --- |
-| `api` | FastAPI backend and database migrations |
-| `frontend` | Compiled React web interface served by Nginx |
-| `worker` | Ansible execution and scheduler |
-| `ai-worker` | Optional AI agent execution |
-| `security-worker` | Security scanning and Docker operations |
-| `postgres-ha` | PostgreSQL 17 + Patroni image for the optional HA deployment |
+| `ghcr.io/r0lfi/ops-center/api` | FastAPI backend; applies database migrations on start |
+| `ghcr.io/r0lfi/ops-center/frontend` | Compiled React web interface served by Nginx |
+| `ghcr.io/r0lfi/ops-center/worker` | Ansible execution worker, also runs the scheduler |
+| `ghcr.io/r0lfi/ops-center/ai-worker` | Optional AI agent execution |
+| `ghcr.io/r0lfi/ops-center/security-worker` | Security scanning and Docker operations |
+| `ghcr.io/r0lfi/ops-center/postgres-ha` | PostgreSQL 17 + Patroni, only for the optional HA deployment |
 
-The repository contains source code and Dockerfiles rather than prebuilt image archives. Building during installation is the default.
+PostgreSQL, Redis, Caddy, Prometheus, Grafana, Loki, Alertmanager, Trivy and the
+Blackbox exporter run from their official upstream images, pinned in
+`compose.yml`. All application images are `linux/amd64`, run as non-root users
+and carry OCI labels, a provenance attestation and an SBOM.
 
-### Build and publish images
+### Tags
+
+| Tag | Points at | Use for |
+| --- | --- | --- |
+| `0.1.0` (also `v0.1.0`) | Exactly that release, never moved | **Production** |
+| `0.1`, `0` | Newest stable release in that series | Following patch or minor updates |
+| `latest` | Newest stable release | Trying Ops Center |
+| `0.2.0-rc.1` | A prerelease; never `latest` | Testing a release candidate |
+
+Pin an exact version in production. A release can contain database migrations,
+so upgrade deliberately, not whenever `latest` moves. Use the same version for
+every component and check out the matching tag of this repository: the Compose
+file, proxy and monitoring configuration and playbooks live in the source tree.
+
+### Docker Compose
+
+`compose.yml` uses the published images by default. The installer above is the
+supported way to set it up. To run Compose yourself on a host with Docker Engine
+and Compose v2:
 
 ```bash
-export IMAGE_PREFIX=ghcr.io/r0lfi/ops-center
+git clone --branch v0.1.0 https://github.com/r0lfi/ops-center.git
+cd ops-center
+
+# Persistent data directories, owned by the users the containers run as.
+sudo sh scripts/prepare-data-dirs.sh /var/lib/ops-center
+
+# .env with freshly generated secrets (mode 0600); an existing .env is kept.
+printf '{"DATA_ROOT": "/var/lib/ops-center", "DOCKER_GID": "%s", "IMAGE_PREFIX": "ghcr.io/r0lfi/ops-center", "IMAGE_TAG": "0.1.0"}' \
+  "$(stat -c %g /var/run/docker.sock)" | python3 scripts/generate-env.py .env
+
+docker compose pull
+docker compose up -d --no-build --wait
+
+# First administrator. The password is read from the terminal, not the command line.
+read -rp 'Admin username: ' OPS_USER; read -rsp 'Admin password (12+ characters): ' OPS_PASS; echo
+OPS_USER="$OPS_USER" OPS_PASS="$OPS_PASS" python3 -c 'import json, os; print(json.dumps({"username": os.environ["OPS_USER"], "password": os.environ["OPS_PASS"]}))' \
+  | docker compose exec -T ops-api python -m app.management.bootstrap_admin
+unset OPS_PASS
+```
+
+Open `http://127.0.0.1:8080` (or tunnel to it). For the full list of settings,
+see [`.env.example`](.env.example). The installer additionally lets the API edit
+the bundled playbooks and indexes the source for the optional AI code tools.
+
+### Docker
+
+There is no single-container `docker run` deployment: the web interface needs
+the API, which needs PostgreSQL and Redis, and the workers need the same
+configuration. Use Compose or the installer. Individual images can be pulled
+and inspected directly:
+
+```bash
+docker pull ghcr.io/r0lfi/ops-center/api:0.1.0
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' \
+  ghcr.io/r0lfi/ops-center/api:0.1.0
+```
+
+### Ports
+
+Only the Caddy proxy publishes a port: `${BIND_ADDRESS}:${PROXY_HTTP_PORT}`,
+default `127.0.0.1:8080`. It serves the web interface on `/`, the API on
+`/api/`, Grafana on `/grafana/` and, when enabled, MCP. Every other service is
+reachable only on the internal Compose networks. Put an HTTPS reverse proxy in
+front for shared access.
+
+### Persistent data
+
+Everything that must survive a container being recreated lives under
+`DATA_ROOT` (installer default `/var/lib/ops-center`), bind-mounted into the
+containers. Containers themselves are disposable.
+
+| Path under `DATA_ROOT` | Contents |
+| --- | --- |
+| `postgres/` | Database: users, inventory, jobs, settings, history |
+| `redis/` | Queue and scheduler state (append-only file) |
+| `secrets/` | Credentials and integration secrets used by the API and workers |
+| `prometheus/`, `alertmanager/`, `loki/`, `grafana/` | Metrics, alerts, logs and dashboards |
+| `trivy/` | Vulnerability database cache |
+| `geoip/`, `docker-stacks/` | GeoIP database, stacks deployed through Ops Center |
+
+The Caddy proxy keeps its own state in two named volumes. The `.env` file next
+to `compose.yml` holds the generated database, Redis, API-signing and Grafana
+secrets; it is never part of the repository or an image.
+
+### Environment variables
+
+The installer, or `scripts/generate-env.py`, writes `.env`. Required, generated
+once and preserved on re-runs: `POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
+`API_SECRET_KEY`, `GRAFANA_ADMIN_PASSWORD`. Set by the installer from your
+choices: `DATA_ROOT`, `DOCKER_GID`, `BIND_ADDRESS`, `PROXY_HTTP_PORT`, `TZ`,
+`OPS_LOCAL_HOSTNAME`, `IMAGE_PREFIX`, `IMAGE_TAG`. Everything else is optional
+integrations and HA settings, documented in [`.env.example`](.env.example).
+
+### Upgrading
+
+1. Read the [changelog](CHANGELOG.md) and the release notes for migrations and
+   required changes.
+2. Back up: `sudo bash scripts/backup/backup.sh` (database, secrets and
+   deployment configuration; see [operations](docs/operations.md)).
+3. Check out the new tag and re-run the installer with the new version. It keeps
+   `.env`, the data directory and existing administrators:
+
+   ```bash
+   git fetch --tags && git checkout v0.2.0
+   bash scripts/install.sh --ask-become-pass \
+     -e ops_build_images=false \
+     -e ops_image_prefix=ghcr.io/r0lfi/ops-center \
+     -e ops_image_tag=0.2.0
+   ```
+
+   With Compose alone: update the checkout, set `IMAGE_TAG` in `.env`, then
+   `docker compose pull && docker compose up -d --no-build --wait`.
+
+The API applies database migrations when it starts. Going back to an older tag
+does not undo them: to roll back, restore the backup taken before the upgrade.
+
+### Building images yourself
+
+```bash
+export IMAGE_PREFIX=registry.example.com/ops-center
 export IMAGE_TAG=0.1.0
 bash scripts/images.sh build
+bash scripts/images.sh push    # only when you intend to publish
 ```
 
-Only when you intentionally want to publish:
-
-```bash
-docker login ghcr.io
-bash scripts/images.sh push
-```
-
-For local Podman builds, set `CONTAINER_ENGINE=podman`. This builds images only; standard deployment uses Docker Engine.
-
-### Install using published images
-
-```bash
-bash scripts/install.sh --ask-become-pass \
-  -e ops_build_images=false \
-  -e ops_image_prefix=ghcr.io/r0lfi/ops-center \
-  -e ops_image_tag=0.1.0
-```
-
-Authenticate Docker on the target first if the packages are private.
+For local Podman builds, set `CONTAINER_ENGINE=podman`. This builds images only;
+standard deployment uses Docker Engine. Maintainers: see
+[docs/releasing.md](docs/releasing.md) for how releases are cut and published.
 
 ---
 
@@ -645,7 +763,12 @@ cd ..
 bash scripts/test/run-tests.sh
 ```
 
-CI validates both the standard installer and HA installer Ansible syntax.
+CI validates both the standard installer and HA installer Ansible syntax and
+builds every application image on each push and pull request.
+
+To run the whole stack from a set of images, with health, web interface, login
+and persistence checks, use `scripts/test/smoke-stack.sh`
+(see [docs/releasing.md](docs/releasing.md#testing-images-before-tagging)).
 
 Before publishing source or a release:
 

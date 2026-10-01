@@ -43,7 +43,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: ${IMAGE_PREFIX:-ops-center}/frontend:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks:
     - frontend
@@ -72,7 +72,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ${IMAGE_PREFIX:-ops-center}/api:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks:
     - frontend
@@ -210,7 +210,7 @@ services:
     build:
       context: .
       dockerfile: worker/Dockerfile
-    image: ${IMAGE_PREFIX:-ops-center}/worker:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
     networks:
@@ -262,7 +262,7 @@ services:
       redis:
         condition: service_healthy
   ops-scheduler:
-    image: ${IMAGE_PREFIX:-ops-center}/worker:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
     command:
@@ -309,7 +309,7 @@ services:
     build:
       context: .
       dockerfile: worker_ai/Dockerfile
-    image: ${IMAGE_PREFIX:-ops-center}/ai-worker:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/ai-worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
     networks:
@@ -504,7 +504,7 @@ services:
     build:
       context: .
       dockerfile: security/Dockerfile
-    image: ${IMAGE_PREFIX:-ops-center}/security-worker:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/security-worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
     command: 'celery -A security.celery_app:celery_app worker --loglevel=info --concurrency=1
