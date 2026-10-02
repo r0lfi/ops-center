@@ -29,3 +29,7 @@ people to install from GitHub.
   history or force-push without explicit authorization.
 
 Apply these rules to every future change and public release.
+
+## Commits and releases
+- Commit as `r0lfi <45281117+r0lfi@users.noreply.github.com>` (author and committer). No `Co-Authored-By` trailers.
+- Releases: push a `vX.Y.Z` tag on main with a matching `## [X.Y.Z]` section in CHANGELOG.md; `.github/workflows/release.yml` validates, builds, smoke-tests and publishes images and the GitHub Release. Pushing tags or commits needs explicit owner approval.
