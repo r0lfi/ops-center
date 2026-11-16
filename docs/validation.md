@@ -17,6 +17,33 @@ The system-changing Ansible installation has not been run against a fresh AlmaLi
 Optional integrations were not exercised against real external accounts or equipment. These checks are not a comprehensive security audit.
 
 
+## November 2026 update — 2026-11-16
+
+Run locally against the merged source before publication:
+
+- Python: backend 387 passed (22 skipped: optional Ansible/external fixtures),
+  AI worker 360 passed plus 13 PostgreSQL routine/memory tests run with the API
+  dependencies, worker 13, security worker 19, release tests 15. The database
+  suites ran against a disposable PostgreSQL 17.6 container with every
+  `*_TEST_DATABASE_URL` set.
+- Migrations: clean `alembic upgrade head` through `0066`, `downgrade 0041` and
+  upgrade again; MCP integration and catalog tests (19) passed; traffic database
+  verification passed.
+- Frontend: lint (0 errors, 2 existing hook-dependency warnings), production
+  build, and 272 Playwright cases passed (1 skipped) across desktop, mobile,
+  tablet, iPad/iPhone WebKit and Android Chrome projects.
+- Rust: `ai_traffic_collector` 12 tests; opstui `cargo fmt --check`, `clippy -D
+  warnings` and 54 tests, all in the AlmaLinux 10.2 build container.
+- Compose configuration (with the `ai-traffic` and `host-metrics` profiles),
+  installer and HA installer syntax and all 36 bundled playbooks passed.
+- `scripts/check-release.py` passed for 807 indexed files; Gitleaks found no
+  leaks in the staged release content. All 28 README screenshots were
+  regenerated from the synthetic fixture and reviewed visually.
+
+Not run locally: the application image builds and the full-stack smoke test
+(CI runs both on push), a fresh-VM installation and real external providers.
+
+
 ## HA update — 2026-09-10
 
 - All 112 Python tests passed, including generated-topology consistency, private
