@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -297,15 +298,8 @@ export default function AppCatalog() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">App Catalog</h1>
-          <p className="text-sm text-muted-foreground">
-            Pick a pre-built app, fill in a few settings, review the resulting compose file, and deploy it
-            as a stack.
-          </p>
-        </div>
-      </div>
+      <PageHeader title="App Catalog" description={<>Pick a pre-built app, fill in a few settings, review the resulting compose file, and deploy it
+            as a stack.</>} />
 
       {hasRole("admin") && <TemplateSettings onChanged={refresh} />}
 

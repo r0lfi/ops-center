@@ -1,5 +1,10 @@
+import type { NativeFleet, NativeContainer } from "@/lib/monitoring";
 import type { AuthenticationBannerData } from "@/components/traffic/AuthenticationBanner";
 import type { SecurityData } from "@/components/traffic/SecuritySignals";
+export interface AIWeeklyBudget {
+  limit_usd: number; warning_usd: number; billed_usd: number; reserved_usd: number; remaining_usd: number;
+  reset_at: string; week_start: string; warning: boolean; exhausted: boolean; pricing_unknown?: number;
+}
 export interface CollaborationPermissions {
   read: boolean; post: boolean; ask: boolean; respond: boolean; peers: string[]; tools: string[];
 }
@@ -16,10 +21,28 @@ export interface CollaborationBoard {
   task_id: string; status: string; stop_reason: string | null; participants: string[];
   charged_tokens: number; actual_tokens: number; model_calls: number; message_count: number;
   created_at: string; expires_at: string; policy: CollaborationPolicy;
+  scope_snapshot?: Record<string, unknown> | null;
 }
-export interface CollaborationSummary { board: CollaborationBoard; question: string; task_status: string }
+export interface CollaborationSummary {
+  board: CollaborationBoard; question: string; task_status: string;
+  lead_agent?: string | null;
+  task_started_at?: string | null;
+  task_completed_at?: string | null;
+}
+export interface CollaborationPost {
+  id: string; sequence: number; agent: string; recipient: string | null; kind: string;
+  content: string; created_at: string; reply_to_id?: string | null;
+}
 export interface CollaborationDetail extends CollaborationSummary {
-  posts: { id: string; sequence: number; agent: string; recipient: string | null; kind: string; content: string; created_at: string }[];
+  posts: CollaborationPost[];
+  tool_executions?: AITask["tools_used"];
+  data_sources?: string[];
+  confidence?: number | null;
+  response_message?: string | null;
+}
+export interface CollaborationExperiences {
+  memory_enabled: boolean;
+  items: { id: string; task_id: string; agent: string; content: string; created_at: string; question: string }[];
 }
 
 export interface HealthResponse {
@@ -28,6 +51,16 @@ export interface HealthResponse {
   version: string;
   components: Record<string, "ok" | "error">;
 }
+
+export const HEALTH_COMPONENT_LABELS: Record<string, string> = {
+  database: "Database",
+  redis: "Redis",
+  loki: "Loki",
+  security_feeds: "Security feeds",
+  prometheus: "Prometheus",
+  alertmanager: "Alertmanager",
+  grafana: "Grafana",
+};
 
 export async function fetchHealth(): Promise<HealthResponse> {
   return apiGet<HealthResponse>("/api/health");
@@ -42,7 +75,7 @@ export interface TrafficSourceConfig {
 }
 export interface TrafficSettingsConfig {
   revision: number; enabled: boolean; sources: TrafficSourceConfig[];
-  allowed_countries: string[]; trusted_dns: string[];
+  allowed_countries: string[]; trusted_dns: string[]; trusted_ips?: string[];
   retention_days: number; max_rows: number; notify_authentication: boolean;
 }
 
@@ -238,6 +271,8 @@ export interface PatchReportHost {
   unreachable: number | null;
   last_task: string | null;
   message: string | null;
+  packages?: { name: string; from: string; to: string }[]; reboot_required?: string | null;
+  tasks?: { task: string; result: string }[]; output?: string | null;
 }
 export interface PatchReportDetail { job: AnsibleJob; hosts: PatchReportHost[] }
 
@@ -550,6 +585,7 @@ export interface LogLine {
 }
 
 export interface LogsResponse {
+  state?: string; message?: string | null; next_cursor?: string | null; source?: string; levels?: string[]; start?: number; end?: number;
   available: boolean;
   lines: LogLine[];
 }
@@ -575,18 +611,41 @@ export class ApiError extends Error {
   }
 }
 
-const TOKEN_KEY = "ops_center_token";
+// The access token lives only in memory: it is never written to localStorage
+// or sessionStorage. A page load gets a fresh one from the HttpOnly refresh
+// cookie (/api/auth/refresh), which JavaScript cannot read.
+let accessToken: string | null = null;
+let accessExpires = 0;
+try { localStorage.removeItem("ops_center_token"); } catch { /* Old builds kept the token here; remove it. */ }
+
+/** Other tabs of this browser hear about logout/login at once. */
+const sessionChannel: BroadcastChannel | null = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("ops-session");
+export function broadcastSession(event: "login" | "logout"): void { sessionChannel?.postMessage(event); }
+export function onSessionBroadcast(handler: (event: string) => void): () => void {
+  if (!sessionChannel) return () => {};
+  const listener = (message: MessageEvent) => handler(String(message.data));
+  sessionChannel.addEventListener("message", listener);
+  return () => sessionChannel.removeEventListener("message", listener);
+}
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
 export function setToken(token: string | null): void {
-  const changed = token !== getToken();
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  const changed = token !== accessToken;
+  accessToken = token;
+  accessExpires = 0;
+  if (token) {
+    try {
+      const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      accessExpires = Number(JSON.parse(atob(encoded)).exp) * 1000;
+    } catch { /* The backend still validates it. */ }
+  }
   if (changed) window.dispatchEvent(new Event("ops-session-changed"));
 }
+
+const SESSION_HEADERS = { "X-Requested-With": "ops-center" };
 
 // Set by the auth context on mount so a 401 anywhere in the app can force a
 // logout/redirect without every call site handling it individually.
@@ -620,41 +679,57 @@ function handleUnauthorized(res: Response, token: string | null): void {
 
 let renewal: Promise<void> | null = null;
 
-/** Renew an open session before expiry. This never stores passwords or replays commands. */
-export async function renewSession(): Promise<void> {
-  const token = getToken();
-  if (!token) return;
-  let expires: number;
-  try {
-    const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    expires = Number(JSON.parse(atob(encoded)).exp) * 1000;
-  } catch { return; } // Non-JWT/invalid tokens are still validated by the backend.
-  if (!Number.isFinite(expires) || expires - Date.now() > 5 * 60 * 1000) return;
+/**
+ * Get a new access token from the refresh cookie when the current one is
+ * missing or about to expire (or always, with force). The cookie rotates on
+ * every use. A 401 means there is no valid session: with a token in memory
+ * that ends the session in this tab; on startup it simply means "signed out".
+ */
+export async function renewSession(force = false): Promise<void> {
+  const token = accessToken;
+  // A token whose expiry cannot be read is left to the backend to validate (a 401 then ends it).
+  if (!force && (!token || !accessExpires || accessExpires - Date.now() > 2 * 60 * 1000)) return;
   if (renewal) return renewal;
   const pending = (async () => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const res = await apiFetch("/api/auth/refresh", { method: "POST", headers: authHeaders(token), signal: controller.signal });
+      const res = await apiFetch("/api/auth/refresh", { method: "POST", headers: SESSION_HEADERS, credentials: "same-origin", signal: controller.signal });
       if (!res.ok) {
-        handleUnauthorized(res, token);
+        if (token) handleUnauthorized(res, token);
         throw new ApiError(await safeDetail(res), res.status);
       }
       const data: LoginResponse = await res.json();
       if (!data.access_token) throw new Error("Session renewal returned no token");
-      // Logout or login in this/another tab wins over an in-flight renewal.
-      if (getToken() === token) setToken(data.access_token);
+      // A logout in this tab while the request was in flight wins.
+      if (accessToken === token) setToken(data.access_token);
     } finally { clearTimeout(timeout); }
   })();
   renewal = pending;
   try { await pending; } finally { if (renewal === pending) renewal = null; }
 }
 
+/** End this browser's session on the server (the refresh cookie) and in memory. */
+export async function endSession(): Promise<void> {
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST", headers: SESSION_HEADERS, credentials: "same-origin" });
+  } finally {
+    setToken(null);
+    broadcastSession("logout");
+  }
+}
+
+/** True when the server wants the password confirmed again before this action. */
+export function needsReauth(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 403 && error.message === "reauthentication required";
+}
+
 // Preserve auth and command semantics; never queue or replay failed requests.
 async function apiFetch(path: string, options: RequestInit): Promise<Response> {
   try {
     const response = await fetch(path, { ...options, cache: "no-store" });
-    if (response.status >= 500) window.dispatchEvent(new Event("ops-backend-unavailable"));
+    // Only gateway failures suggest the backend is gone; a 500 is an error in one endpoint.
+    if ([502, 503, 504].includes(response.status)) window.dispatchEvent(new Event("ops-backend-unavailable"));
     return response;
   } catch (error) {
     window.dispatchEvent(new Event("ops-backend-unavailable"));
@@ -687,7 +762,8 @@ export async function apiSend<T>(path: string, method: string, body?: unknown): 
   if (!res.ok) {
     handleUnauthorized(res, token);
     const detail = await safeDetail(res);
-    if (res.status !== 401) onApiError?.(detail);
+    // A wrong password or a pending re-authentication is shown by the form that asked.
+    if (res.status !== 401 && detail !== "reauthentication required" && path !== "/api/auth/reauth") onApiError?.(detail);
     throw new ApiError(detail, res.status);
   }
   if (res.status === 204) return undefined as T;
@@ -719,6 +795,21 @@ export interface LoginResponse {
   token_type: string;
   role: Role;
   username: string;
+  remember?: boolean;
+}
+
+export interface UserSessionInfo {
+  id: string;
+  user_id: string;
+  username: string;
+  remember: boolean;
+  created_at: string;
+  last_used_at: string;
+  idle_expires_at: string;
+  absolute_expires_at: string;
+  user_agent: string | null;
+  ip: string | null;
+  current: boolean;
 }
 
 export interface AuditLogEntry {
@@ -797,13 +888,113 @@ export interface VpnPeer {
   note: string | null;
 }
 
-export interface PersonalMemory { id: string; agent_id: string | null; key: string; content: string; source_task_id: string | null; updated_at: string }
+export type MemoryKind = "fact" | "plan" | "history";
+export interface PersonalMemory {
+  id: string; agent_id: string | null; key: string; content: string; source_task_id: string | null; updated_at: string;
+  category?: string | null; kind?: MemoryKind | null; created_at?: string;
+}
+export interface MemoryVersion {
+  id: string; memory_id: string | null; agent_id: string | null; key: string; category: string | null; kind: MemoryKind | null;
+  content: string; change: "update" | "scope" | "merge" | "delete" | "restore"; changed_by: string; created_at: string;
+}
+export interface OrganizeTarget { id: string; key: string; category: string | null; kind: MemoryKind; content: string; scope: "nova" | "shared" }
+export interface OrganizeProposal {
+  id: string; key: string; category: string | null; kind: MemoryKind; content: string; scope: "nova" | "shared";
+  suggested_scope: "nova" | "shared"; action: "create" | "update" | "unchanged"; reason: string | null; target: OrganizeTarget | null; section: number;
+}
+export type RoutineChannel = "web" | "talk";
+export interface NovaRoutine {
+  id: string; name: string; schedule: string; instruction: string; channel: RoutineChannel; enabled: boolean;
+  last_run_at: string | null; next_run_at: string | null; created_at: string;
+}
+export interface NovaRoutineRun {
+  id: string; routine_id: string; routine_name: string; due_at: string; manual: boolean; channel: RoutineChannel;
+  status: "started" | "skipped"; reason: string | null; task_id: string | null; task_status: AITask["status"] | null;
+  response: string | null; error: string | null; completed_at: string | null; delivered_at: string | null; delivery_error: string | null;
+}
+export interface ProactiveSettings { enabled: boolean; quiet_start: string; quiet_end: string; max_per_day: number }
+export interface NovaRoutines {
+  settings: ProactiveSettings; memory_enabled: boolean; talk_room: boolean; timezone: string; max_routines: number;
+  routines: NovaRoutine[]; runs: NovaRoutineRun[];
+}
+export interface NovaDataSource {
+  kind: "caldav" | "homeassistant"; label: string; host: string | null; calendars: string[]; task_lists: string[]; entities: string[];
+  allow_cloud: boolean; secret_present: boolean; offered: boolean; tools: string[];
+}
+export interface NovaDataSources { cloud_provider: boolean; sources: NovaDataSource[] }
+export interface DataSourceTest { results: { kind: NovaDataSource["kind"]; ok: boolean; error: string | null }[] }
+export type RoutineInput = Pick<NovaRoutine, "name" | "schedule" | "instruction" | "channel" | "enabled">;
+export interface OrganizeSection { index: number; chars: number; status: "pending" | "done" | "failed"; error: string | null; secrets: number | null; dropped: number | null }
+export interface OrganizeJob {
+  id: string; status: "queued" | "running" | "done" | "partial" | "failed"; source_name: string; created_at: string; finished_at: string | null;
+  sections: OrganizeSection[]; proposals: OrganizeProposal[] | null; proposal_count: number;
+  estimate?: { sections: number; input_tokens: number; output_tokens: number; provider: string | null; local: boolean; cost_usd: number | null };
+}
+export interface OrganizeItem {
+  action: "create" | "update" | "skip"; key: string; content: string; category: string | null; kind: MemoryKind | null;
+  scope: "nova" | "shared"; target_id: string | null;
+}
+export class OrganizeApplyError extends Error {
+  constructor(message: string, public errors: { index: number; key: string; error: string }[]) { super(message); }
+}
 export interface AIHistory { total: number; items: { agent: string; task: AITask }[] }
+export type ImportSource = "chatgpt" | "claude" | "gemini" | "other";
+export type ImportKind = "memory_list" | "chatgpt_export";
+export interface ImportStatus { memory_enabled: boolean; conversations: number; analyzed: number; pending_import_suggestions: number; max_upload_mb: number }
+export interface ImportSummary {
+  kind: ImportKind; imported?: boolean; sample: string[];
+  items?: number; new_suggestions?: number; already_suggested?: number; filtered_secrets?: number; duplicates?: number; skipped_short?: number;
+  conversations?: number; new?: number; updated?: number; unchanged?: number; filtered_secret_lines?: number; skipped_empty?: number; ignored_files?: number;
+}
+export interface ImportEstimate { conversations: number; model_calls: number; input_tokens: number; output_tokens: number; provider: string | null; local: boolean; cost_usd: number | null; note: string | null }
+
+async function uploadImport(path: string, kind: ImportKind, source: ImportSource, file: Blob, name: string): Promise<ImportSummary> {
+  const form = new FormData();
+  form.append("kind", kind);
+  form.append("source", source);
+  form.append("file", file, name);
+  const res = await fetch(path, { method: "POST", body: form, headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
+  if (!res.ok) {
+    let detail = "Upload failed";
+    try { detail = (await res.json()).detail ?? detail; } catch { /* keep default */ }
+    throw new Error(typeof detail === "string" ? detail : "Upload failed");
+  }
+  return res.json();
+}
+
+export interface MemorySuggestion {
+  id: string; agent_id: string | null; key: string; content: string; source: "conversation" | "import" | "journal";
+  evidence_task_id: string | null; status: "pending" | "accepted" | "rejected"; created_at: string; decided_at: string | null;
+  category?: string | null; kind?: MemoryKind | null; target_memory_id?: string | null; target?: PersonalMemory | null;
+}
+
+async function sendForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(path, { method: "POST", body: form, headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
+  if (!res.ok) {
+    let detail = "Request failed";
+    try { detail = (await res.json()).detail ?? detail; } catch { /* keep default */ }
+    throw new Error(typeof detail === "string" ? detail : "Request failed");
+  }
+  return res.json();
+}
+
+async function applyOrganize(id: string, items: OrganizeItem[]): Promise<{ created: number; updated: number; skipped: number }> {
+  const res = await fetch(`/api/ai/memory/organize/${encodeURIComponent(id)}/apply`, {
+    method: "POST", body: JSON.stringify({ items }), headers: { Authorization: `Bearer ${getToken() ?? ""}`, "Content-Type": "application/json" },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = body?.detail;
+    if (detail && typeof detail === "object" && Array.isArray(detail.errors)) throw new OrganizeApplyError(detail.message ?? "Nothing was saved.", detail.errors);
+    throw new Error(typeof detail === "string" ? detail : "Saving failed");
+  }
+  return body;
+}
 
 export interface AIProvider {
   id: string;
   slug: string;
-  kind: "anthropic" | "openai" | "ollama";
+  kind: "anthropic" | "openai" | "mistral" | "ollama" | "openai_compatible";
   display_name: string;
   base_url: string | null;
   default_model: string | null;
@@ -851,8 +1042,17 @@ export interface AIAgent {
   max_tool_calls: number;
   max_execution_seconds: number;
   enabled: boolean;
+  /** "external": runs outside Ops Center (e.g. opencode) and reports its own state. */
+  runtime?: "native" | "external";
+  /** Slugs this agent may delegate to; null = every enabled non-personal agent. */
+  allowed_dispatch_targets?: string[] | null;
+  /** Personal agents (nova) are never delegation targets and their tasks are owner-only. */
+  personal?: boolean;
   last_activity_at: string | null;
   updated_at: string;
+  /** Open tasks (GET /ai/agents); one agent with many tasks is still one agent. */
+  running_tasks?: number;
+  queued_tasks?: number;
 }
 
 export interface AITask {
@@ -873,6 +1073,94 @@ export interface AITask {
   completed_at: string | null;
   duration_ms: number | null;
   created_at: string;
+  outcome?: AITaskOutcome | null;
+  resumed_from?: string | null;
+}
+
+export type AITaskOutcome = "completed" | "inconclusive" | "blocked" | "waiting_for_approval" | "failed";
+export type AIWorkItemStatus = "queued" | "running" | "waiting_for_agent" | "waiting_for_approval" | "blocked" | "completed" | "failed" | "inconclusive";
+
+export interface AIWorkItem {
+  id: string;
+  agent: string;
+  title: string;
+  status: AIWorkItemStatus;
+  depends_on: string[];
+  result: string | null;
+  tools: string[];
+  attempts: number;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AIBoardFinding {
+  id: string;
+  kind: "fact" | "hypothesis" | "ruled_out" | "resolution";
+  system: string | null;
+  statement: string;
+  evidence: string | null;
+  source: string | null;
+  observed_at: string;
+  stale: boolean;
+}
+
+export interface AIToolProposal {
+  id: string;
+  task_id: string | null;
+  title: string;
+  status: "proposed" | "in_development" | "ready_for_review" | "changes_requested" | "approved" | "deployed" | "rejected" | "release_failed" | "rolled_back";
+  details: Record<string, string>;
+  has_patch: boolean;
+  patch_notes: string | null;
+  dev_task_id: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export type DevStage = "proposed" | "working" | "ready_for_review" | "changes_requested" | "approved" | "in_production" | "rejected" | "failed" | "rolled_back";
+
+export interface DevRun {
+  id: string; status: AITask["status"]; outcome: string | null; requested_by: string | null;
+  created_at: string; started_at: string | null; completed_at: string | null; duration_ms: number | null;
+  tools_used: number; error: string | null;
+}
+
+export interface DevChange {
+  id: string; title: string; status: AIToolProposal["status"]; stage: DevStage; summary: string;
+  proposed_by: string | null; developer_run: DevRun | null; runs: number;
+  files: number; added: number; removed: number; has_patch: boolean; patch_sha256: string | null;
+  approved_by: string | null; approved_at: string | null; release_ref: string | null; branch: string | null;
+  created_at: string; updated_at: string; started_at: string | null; finished_at: string | null;
+}
+
+export interface DevChangeDetail extends DevChange {
+  details: Record<string, string>; notes: string | null; task_id: string | null; traffic_events: number;
+  files_changed: { path: string; added: number; removed: number; status: "added" | "modified" | "deleted"; kind: "code" | "test" | "docs" | "config" }[];
+  checks: { name: string; result: "passed" | "failed" | "warning" | "not_run"; detail: string }[];
+  runs_detail: DevRun[];
+  timeline: { at: string; kind: string; text: string }[];
+  reviews: { decision: string; comment: string | null; patch_sha256: string | null; release_ref: string | null; decided_by: string; decided_at: string }[];
+}
+
+export interface DevOverview {
+  agent: { name: string; status: string; activity: string | null; enabled: boolean; configured: boolean } | null;
+  counts: Partial<Record<DevStage, number>>;
+  items: DevChange[];
+  can_decide: boolean;
+}
+
+export interface AITaskBoard {
+  task_id: string;
+  status: AITask["status"];
+  outcome: AITaskOutcome | null;
+  resumable: boolean;
+  resumed_by: string | null;
+  items: AIWorkItem[];
+  findings: AIBoardFinding[];
+  proposals: AIToolProposal[];
+  actions: { id: string; code: string; tool: string; status: string; level: number; reason: string | null }[];
 }
 
 export interface AIFinding {
@@ -914,9 +1202,17 @@ export interface AIAction {
 
 export const api = {
   auth: {
-    login: (username: string, password: string): Promise<LoginResponse> =>
-      apiSend("/api/auth/login", "POST", { username, password }),
+    login: (username: string, password: string, remember_me = false): Promise<LoginResponse> =>
+      apiSend("/api/auth/login", "POST", { username, password, remember_me }),
+    reauth: async (password: string): Promise<void> => {
+      const res: LoginResponse = await apiSend("/api/auth/reauth", "POST", { password });
+      setToken(res.access_token);
+    },
     me: (): Promise<User> => apiGet("/api/auth/me"),
+    sessions: (allUsers = false): Promise<UserSessionInfo[]> => apiGet(`/api/auth/sessions${allUsers ? "?all_users=true" : ""}`),
+    revokeOwnSession: (id: string): Promise<void> => apiSend(`/api/auth/sessions/${id}`, "DELETE"),
+    revokeSession: (userId: string, id: string): Promise<void> => apiSend(`/api/users/${userId}/sessions/${id}/revoke`, "POST"),
+    revokeAllSessions: (userId: string): Promise<{ revoked: number }> => apiSend(`/api/users/${userId}/sessions/revoke-all`, "POST"),
   },
   users: {
     list: (): Promise<User[]> => apiGet("/api/users"),
@@ -1016,6 +1312,8 @@ export const api = {
       fix_available?: boolean;
       host_id?: string;
       container_name?: string;
+      search?: string;
+      limit?: number;
     }): Promise<Vulnerability[]> => {
       const qs = new URLSearchParams();
       if (params?.severity) qs.set("severity", params.severity);
@@ -1023,6 +1321,8 @@ export const api = {
       if (params?.fix_available !== undefined) qs.set("fix_available", String(params.fix_available));
       if (params?.host_id) qs.set("host_id", params.host_id);
       if (params?.container_name) qs.set("container_name", params.container_name);
+      if (params?.search) qs.set("search", params.search);
+      if (params?.limit) qs.set("limit", String(params.limit));
       const suffix = qs.toString() ? `?${qs.toString()}` : "";
       return apiGet(`/api/security/vulnerabilities${suffix}`);
     },
@@ -1138,13 +1438,31 @@ export const api = {
       return apiGet(`/api/docker-hosts/${encodeURIComponent(hostname)}/events${suffix}`);
     },
   },
+  monitoring: {
+    fleet: (minutes: number, end?: number, hostId?: string): Promise<NativeFleet> => {
+      const qs = new URLSearchParams({minutes: String(minutes)});
+      if (end !== undefined) qs.set("end", String(end));
+      if (hostId) qs.set("host_id", hostId);
+      return apiGet(`/api/monitoring/fleet?${qs}`);
+    },
+    container: (id: string, minutes: number, end?: number): Promise<NativeContainer> => {
+      const qs = new URLSearchParams({minutes: String(minutes)});
+      if (end !== undefined) qs.set("end", String(end));
+      return apiGet(`/api/monitoring/containers/${encodeURIComponent(id)}?${qs}`);
+    },
+    stats: (id: string): Promise<Record<string, string | null>> => apiGet(`/api/monitoring/containers/${encodeURIComponent(id)}/stats`),
+    events: (id: string, minutes: number, end?: number): Promise<{state:string; events:{action:string;occurred_at:string;actor_id:string}[]}> => {
+      const qs = new URLSearchParams({minutes: String(minutes)});
+      if (end !== undefined) qs.set("end", String(end));
+      return apiGet(`/api/monitoring/containers/${encodeURIComponent(id)}/events?${qs}`);
+    },
+  },
   logs: {
-    query: (params: { host?: string; service?: string; minutes?: number }): Promise<LogsResponse> => {
+    query: (params: { host?: string; host_id?: string; container_id?: string; service?: string; search?: string;
+      level?: string; minutes?: number; limit?: number; end?: number; cursor?: string }): Promise<LogsResponse> => {
       const qs = new URLSearchParams();
-      if (params.host) qs.set("host", params.host);
-      if (params.service) qs.set("service", params.service);
-      if (params.minutes) qs.set("minutes", String(params.minutes));
-      return apiGet(`/api/logs?${qs.toString()}`);
+      Object.entries(params).forEach(([key, value]) => { if (value !== undefined && value !== "") qs.set(key, String(value)); });
+      return apiGet(`/api/logs?${qs}`);
     },
   },
   metrics: {
@@ -1194,9 +1512,12 @@ export const api = {
     cancel: (id: string): Promise<AnsibleJob> => apiSend(`/api/jobs/${id}/cancel`, "POST"),
   },
   ai: {
+    budget: (): Promise<AIWeeklyBudget> => apiGet("/api/ai/budget"),
+    setBudgetLimit: (limit_usd: number): Promise<AIWeeklyBudget> => apiSend("/api/ai/budget", "PUT", { limit_usd }),
     collaboration: {
       settings: (): Promise<CollaborationSettings> => apiGet("/api/ai/collaboration/settings"),
       save: (revision: number, policy: CollaborationPolicy): Promise<CollaborationSettings> => apiSend("/api/ai/collaboration/settings", "PUT", { revision, policy }),
+      experiences: (q = ""): Promise<CollaborationExperiences> => apiGet(`/api/ai/collaboration/experiences?${new URLSearchParams({ q, limit: "30" })}`),
       boards: (offset = 0): Promise<CollaborationSummary[]> => apiGet(`/api/ai/collaboration/boards?offset=${offset}`),
       board: (id: string): Promise<CollaborationDetail> => apiGet(`/api/ai/collaboration/boards/${id}`),
       stop: (id: string): Promise<CollaborationBoard> => apiSend(`/api/ai/collaboration/boards/${id}/stop`, "POST"),
@@ -1205,9 +1526,58 @@ export const api = {
 
     memory: {
       list: (): Promise<{ enabled: boolean; items: PersonalMemory[] }> => apiGet("/api/ai/memory"),
-      save: (key: string, content: string, agentId: string | null = null): Promise<{ ok: boolean }> => apiSend("/api/ai/memory", "PUT", { key, content, agent_id: agentId }),
+      save: (key: string, content: string, agentId: string | null = null, extra: { category?: string | null; kind?: MemoryKind | null } = {}): Promise<{ ok: boolean }> =>
+        apiSend("/api/ai/memory", "PUT", { key, content, agent_id: agentId, ...extra }),
+      update: (id: string, edits: Partial<{ key: string; content: string; category: string | null; kind: MemoryKind | null; agent_id: string | null }>): Promise<PersonalMemory> =>
+        apiSend(`/api/ai/memory/${encodeURIComponent(id)}`, "PATCH", edits),
+      merge: (payload: { ids: string[]; key: string; content: string; category: string | null; kind: MemoryKind | null; agent_id: string | null }): Promise<PersonalMemory> =>
+        apiSend("/api/ai/memory/merge", "POST", payload),
+      duplicates: (): Promise<{ pairs: { a: string; b: string; score: number }[] }> => apiGet("/api/ai/memory/duplicates"),
+      history: (params: { memoryId?: string; deleted?: boolean }): Promise<{ items: MemoryVersion[] }> =>
+        apiGet(`/api/ai/memory/history?${params.memoryId ? `memory_id=${encodeURIComponent(params.memoryId)}` : "deleted=true"}`),
+      restore: (versionId: string): Promise<PersonalMemory> => apiSend(`/api/ai/memory/history/${encodeURIComponent(versionId)}/restore`, "POST"),
+      organize: {
+        start: (input: { text?: string; file?: File }): Promise<OrganizeJob> => {
+          const form = new FormData();
+          if (input.file) form.append("file", input.file, input.file.name);
+          else form.append("text", input.text ?? "");
+          return sendForm("/api/ai/memory/organize", form);
+        },
+        list: (): Promise<{ items: OrganizeJob[] }> => apiGet("/api/ai/memory/organize"),
+        get: (id: string): Promise<OrganizeJob> => apiGet(`/api/ai/memory/organize/${encodeURIComponent(id)}`),
+        retry: (id: string): Promise<OrganizeJob> => apiSend(`/api/ai/memory/organize/${encodeURIComponent(id)}/retry`, "POST"),
+        discard: (id: string): Promise<void> => apiSend(`/api/ai/memory/organize/${encodeURIComponent(id)}`, "DELETE"),
+        apply: applyOrganize,
+      },
       remove: (id: string): Promise<void> => apiSend(`/api/ai/memory/${encodeURIComponent(id)}`, "DELETE"),
       preference: (enabled: boolean): Promise<{ enabled: boolean }> => apiSend("/api/ai/memory/preferences", "PUT", { enabled }),
+      suggestions: (status: MemorySuggestion["status"] = "pending"): Promise<{ items: MemorySuggestion[] }> =>
+        apiGet(`/api/ai/memory/suggestions?status=${status}`),
+      accept: (id: string, edits: { key?: string; content?: string; category?: string; kind?: MemoryKind; keep_history?: boolean } = {}): Promise<MemorySuggestion> =>
+        apiSend(`/api/ai/memory/suggestions/${encodeURIComponent(id)}/accept`, "POST", edits),
+      reject: (id: string): Promise<MemorySuggestion> => apiSend(`/api/ai/memory/suggestions/${encodeURIComponent(id)}/reject`, "POST"),
+      acceptAll: (ids: string[]): Promise<{ accepted: number; failed: { id: string; key: string; error: string }[] }> =>
+        apiSend("/api/ai/memory/suggestions/accept-all", "POST", { ids }),
+    },
+    routines: {
+      list: (): Promise<NovaRoutines> => apiGet("/api/ai/nova/routines"),
+      create: (payload: RoutineInput): Promise<NovaRoutine> => apiSend("/api/ai/nova/routines", "POST", payload),
+      update: (id: string, payload: Partial<RoutineInput>): Promise<NovaRoutine> =>
+        apiSend(`/api/ai/nova/routines/${encodeURIComponent(id)}`, "PATCH", payload),
+      remove: (id: string): Promise<void> => apiSend(`/api/ai/nova/routines/${encodeURIComponent(id)}`, "DELETE"),
+      run: (id: string): Promise<{ queued: boolean }> => apiSend(`/api/ai/nova/routines/${encodeURIComponent(id)}/run`, "POST"),
+      settings: (payload: ProactiveSettings): Promise<ProactiveSettings> => apiSend("/api/ai/nova/proactive", "PUT", payload),
+      sources: (): Promise<NovaDataSources> => apiGet("/api/ai/nova/data-sources"),
+      testSources: (): Promise<DataSourceTest> => apiSend("/api/ai/nova/data-sources/test", "POST"),
+    },
+    imports: {
+      status: (): Promise<ImportStatus> => apiGet("/api/ai/imports"),
+      preview: (kind: ImportKind, source: ImportSource, file: Blob, name: string) => uploadImport("/api/ai/imports/preview", kind, source, file, name),
+      apply: (kind: ImportKind, source: ImportSource, file: Blob, name: string) => uploadImport("/api/ai/imports", kind, source, file, name),
+      estimate: (): Promise<ImportEstimate> => apiGet("/api/ai/imports/suggest-estimate"),
+      suggest: (): Promise<ImportEstimate & { queued: boolean }> => apiSend("/api/ai/imports/suggest", "POST", { confirm: true }),
+      remove: (source: ImportSource): Promise<{ deleted_conversations: number; deleted_suggestions: number; deleted_notes: number }> =>
+        apiSend(`/api/ai/imports/${source}`, "DELETE"),
     },
     history: (params: { agent?: string; conversation_key?: string; q?: string; offset?: number; limit?: number } = {}): Promise<AIHistory> => {
       const query = new URLSearchParams();
@@ -1247,13 +1617,41 @@ export const api = {
         apiSend(`/api/ai/agents/${id}`, "PATCH", payload),
       remove: (id: string): Promise<void> => apiSend(`/api/ai/agents/${id}`, "DELETE"),
     },
-    ask: (message: string, agent = "coordinator", conversationKey?: string): Promise<AITask> =>
-      apiSend("/api/ai/ask", "POST", { message, agent, conversation_key: conversationKey }),
+    ask: (message: string, agent = "coordinator", conversationKey?: string,
+          context?: { page: string; path: string; items: { label: string; value: string }[] }): Promise<AITask> =>
+      apiSend("/api/ai/ask", "POST", { message, agent, conversation_key: conversationKey, ...(context ? { context } : {}) }),
     usage: (days = 7): Promise<AIUsageResponse> => apiGet(`/api/ai/usage?days=${days}`),
     tasks: {
       cancel: (id: string): Promise<AITask> => apiSend(`/api/ai/tasks/${id}/cancel`, "POST"),
-      list: (limit = 50): Promise<AITask[]> => apiGet(`/api/ai/tasks?limit=${limit}`),
+      list: (limit = 50, filter: { agent?: string; mine?: boolean } = {}): Promise<AITask[]> =>
+        apiGet(`/api/ai/tasks?limit=${limit}${filter.agent ? `&agent=${encodeURIComponent(filter.agent)}` : ""}${filter.mine ? "&mine=true" : ""}`),
       get: (id: string): Promise<AITask> => apiGet(`/api/ai/tasks/${id}`),
+      board: (id: string): Promise<AITaskBoard> => apiGet(`/api/ai/tasks/${id}/board`),
+      resume: (id: string): Promise<{ task_id: string }> => apiSend(`/api/ai/tasks/${id}/resume`, "POST"),
+    },
+    developer: {
+      overview: (): Promise<DevOverview> => apiGet("/api/ai/developer/overview"),
+      change: (id: string): Promise<DevChangeDetail> => apiGet(`/api/ai/developer/changes/${id}`),
+    },
+    proposals: {
+      list: (status?: string): Promise<AIToolProposal[]> => apiGet(`/api/ai/proposals${status ? `?status=${status}` : ""}`),
+      approve: (id: string): Promise<AIToolProposal> => apiSend(`/api/ai/proposals/${id}/approve`, "POST"),
+      reject: (id: string): Promise<AIToolProposal> => apiSend(`/api/ai/proposals/${id}/reject`, "POST"),
+      deployed: (id: string, note = "", release_ref = ""): Promise<AIToolProposal> => apiSend(`/api/ai/proposals/${id}/deployed`, "POST", { note, release_ref }),
+      review: (id: string, decision: "approve" | "request_changes" | "reject", comment = "", patch_sha256?: string | null): Promise<{ stage: DevStage }> =>
+        apiSend(`/api/ai/proposals/${id}/review`, "POST", { decision, comment, patch_sha256: patch_sha256 ?? null }),
+      releaseOutcome: (id: string, outcome: "release_failed" | "rolled_back", note: string, release_ref = ""): Promise<{ stage: DevStage }> =>
+        apiSend(`/api/ai/proposals/${id}/release-outcome`, "POST", { outcome, note, release_ref }),
+      patch: async (id: string): Promise<string> => {
+        await renewSession();
+        const token = getToken();
+        const res = await apiFetch(`/api/ai/proposals/${id}/patch`, { headers: authHeaders(token) });
+        if (!res.ok) {
+          handleUnauthorized(res, token);
+          throw new ApiError(await safeDetail(res), res.status);
+        }
+        return res.text();
+      },
     },
     findings: {
       list: (limit = 50): Promise<AIFinding[]> => apiGet(`/api/ai/findings?limit=${limit}`),

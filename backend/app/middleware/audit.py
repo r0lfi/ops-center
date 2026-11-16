@@ -9,7 +9,8 @@ from app.models.audit import AuditLogEntry
 from app.services.auth import decode_access_token
 
 _REDACT_KEYS = ("password", "access_token", "token", "secret", "confirm", "credential", "key", "apikey")
-_SKIP_PATH_PREFIXES = ("/api/mcp/","/api/health", "/api/docs", "/api/redoc", "/api/openapi.json")
+# The AI traffic collector posts every few seconds; it is a machine feed, not a user action.
+_SKIP_PATH_PREFIXES = ("/api/mcp/","/api/health", "/api/ai-traffic/ingest", "/api/ai-traffic/collector/", "/api/docs", "/api/redoc", "/api/openapi.json")
 
 
 def _redact(value):

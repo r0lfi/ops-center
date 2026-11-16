@@ -1,7 +1,7 @@
 import httpx
-from worker_ai.ai.transport import post
+from worker_ai.ai.transport import output_timeout, post
 
-from worker_ai.ai.providers.base import AIProvider, ProviderError, ProviderResult, ToolCall
+from worker_ai.ai.providers.base import AIProvider, ProviderError, ProviderResult, ToolCall, usage_count
 
 _API_VERSION = "2023-06-01"
 
@@ -20,50 +20,53 @@ class AnthropicProvider(AIProvider):
         try:
             resp = post(
                 f"{self._base_url}/v1/messages",
-                headers={
-                    "x-api-key": self._api_key,
-                    "anthropic-version": _API_VERSION,
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "max_tokens": max_tokens,
-                    "system": system,
-                    "messages": messages,
-                    **({"tools": anthropic_tools} if anthropic_tools else {}),
-                },
-                timeout=60.0,
+                headers={"x-api-key": self._api_key, "anthropic-version": _API_VERSION, "content-type": "application/json"},
+                json={"model": model, "max_tokens": max_tokens, "service_tier": "standard_only",
+                    "cache_control": {"type": "ephemeral"},
+                    "system": system, "messages": messages,
+                    **({"tools": anthropic_tools} if anthropic_tools else {})},
+                timeout=output_timeout(max_tokens),
             )
             resp.raise_for_status()
             data = resp.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise ProviderError(f"Anthropic API call failed: {exc}") from exc
 
-        content = data.get("content", [])
-        text_parts = [b["text"] for b in content if b.get("type") == "text"]
-        tool_calls = [
-            ToolCall(id=b["id"], name=b["name"], arguments=b.get("input", {}))
-            for b in content
-            if b.get("type") == "tool_use"
-        ]
-        # Pass the real value through (e.g. "max_tokens", "end_turn") instead
-        # of collapsing everything non-"tool_use" to "stop" - runtime.py only
-        # branches on "tool_use" today, but a truncated response is a very
-        # different situation from a clean finish and callers should be able
-        # to tell them apart (see runtime.py's empty-text handling).
-        stop_reason = data.get("stop_reason") or "stop"
-
-        usage = data.get("usage") or {}
-        return ProviderResult(
-            text="\n".join(text_parts).strip(),
-            tool_calls=tool_calls,
-            stop_reason=stop_reason,
-            input_tokens=int(usage.get("input_tokens") or 0),
-            output_tokens=int(usage.get("output_tokens") or 0),
-            # Anthropic requires echoing the exact content-block list back
-            # as history for tool_use/tool_result pairing to line up.
-            assistant_message={"role": "assistant", "content": content},
-        )
+        usage = data.get("usage") if isinstance(data, dict) else None
+        usage = usage if isinstance(usage, dict) else {}
+        inp, inp_valid = usage_count(usage, "input_tokens")
+        out, out_valid = usage_count(usage, "output_tokens")
+        cached, read_valid = usage_count(usage, "cache_read_input_tokens")
+        writes, write_valid = usage_count(usage, "cache_creation_input_tokens")
+        raw_creation = usage.get("cache_creation")
+        creation = raw_creation if isinstance(raw_creation, dict) else {}
+        hour_writes, ttl_valid = usage_count(creation, "ephemeral_1h_input_tokens", None if writes else 0)
+        accounting = dict(input_tokens=inp + cached + writes, output_tokens=out,
+            usage_reported=all((inp_valid, out_valid, read_valid, write_valid, ttl_valid,
+                isinstance(usage.get("input_tokens"), int) and not isinstance(usage.get("input_tokens"), bool),
+                isinstance(usage.get("output_tokens"), int) and not isinstance(usage.get("output_tokens"), bool),
+                raw_creation is None or isinstance(raw_creation, dict))),
+            cache_read_tokens=cached, cache_write_tokens=writes, cache_write_1h_tokens=hour_writes)
+        try:
+            content = data["content"]
+            if not isinstance(content, list):
+                raise ValueError("Invalid content blocks")
+            text_parts, tool_calls = [], []
+            for block in content:
+                if block.get("type") == "text":
+                    if not isinstance(block["text"], str):
+                        raise ValueError("Invalid text")
+                    text_parts.append(block["text"])
+                elif block.get("type") == "tool_use":
+                    if (not isinstance(block["id"], str) or not block["id"] or not isinstance(block["name"], str)
+                            or not block["name"] or not isinstance(block.get("input", {}), dict)):
+                        raise ValueError("Invalid tool call")
+                    tool_calls.append(ToolCall(id=block["id"], name=block["name"], arguments=block.get("input", {})))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return ProviderResult(text="", stop_reason="error", error_message="Anthropic returned an invalid response. No tools were executed; reported usage was retained.", **accounting)
+        return ProviderResult(text="\n".join(text_parts).strip(), tool_calls=tool_calls,
+            stop_reason=data.get("stop_reason") or "stop",
+            assistant_message={"role": "assistant", "content": content}, **accounting)
 
     def tool_result_messages(self, tool_calls: list[ToolCall], results: list[str]) -> list[dict]:
         return [

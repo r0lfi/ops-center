@@ -26,10 +26,22 @@ const server = http.createServer(async (req, res) => {
   if (path.startsWith("/api/")) {
     if (backendDown) return json({ detail: "Fixture backend unavailable" }, 503);
     if (path === "/api/health") return json({ status: "ok", app: "Ops Center", components: { database: "ok", redis: "ok" } });
+    // Session fixture: the refresh cookie's value is handed back as the access token.
+    if (path === "/api/auth/refresh") {
+      const cookie = /(?:^|;\s*)ops_refresh=([^;]+)/.exec(req.headers.cookie || "")?.[1];
+      if (req.method !== "POST" || req.headers["x-requested-with"] !== "ops-center") return json({ detail: "missing request header" }, 403);
+      if (!cookie) return json({ detail: "not signed in" }, 401);
+      return json({ access_token: decodeURIComponent(cookie), token_type: "bearer", role: "admin", username: "PWA Test" });
+    }
+    if (path === "/api/auth/logout") {
+      res.writeHead(204, { "Set-Cookie": "ops_refresh=; Path=/; Max-Age=0", "Cache-Control": "no-store" });
+      return res.end();
+    }
     if (path === "/api/auth/me") {
       if (req.headers.authorization !== "Bearer pwa-test-only") return json({ detail: "Unauthorized" }, 401);
       return json({ id: "fixture", username: "PWA Test", role: "admin", is_active: true });
     }
+    if (path === "/api/settings/incidents") return json({ revision:0, talk_enabled:true, categories:["disk","cpu","memory","availability","certificate","authentication","traffic","monitoring","other"], severities:["warning","high","critical"], excluded_rules:[], excluded_resources:[], recovery_minutes:30, talk_progress:false, transport_enabled:true });
     if (path === "/api/test/echo") {
       let body = "";
       for await (const chunk of req) body += chunk;

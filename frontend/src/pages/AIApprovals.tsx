@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 
+import { ToolProposalsCard } from "@/components/ai/ToolProposalsCard";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth";
 import { api, type AIAction } from "@/lib/api";
+import { canRespondToAction } from "@/lib/aiApprovals";
 
 const ACTION_STATUS_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = {
   pending: "warning",
@@ -33,8 +36,6 @@ function timeAgo(iso: string | null): string {
 
 export default function AIApprovals() {
   const { hasRole } = useAuth();
-  const isAdmin = hasRole("admin");
-  const canApprove = hasRole("operator");
 
   const [actions, setActions] = useState<AIAction[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export default function AIApprovals() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Approvals</h1>
+      <PageHeader title="Approvals" description="Actions agents have asked to run, waiting for a person to decide." />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">How approvals work</CardTitle>
@@ -132,13 +133,14 @@ export default function AIApprovals() {
           </details>
         </CardContent>
       </Card>
+      <ToolProposalsCard isAdmin={hasRole("admin")} />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">All AI actions</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Action</th>
@@ -160,25 +162,25 @@ export default function AIApprovals() {
                 )}
                 {actions.map((a) => {
                   const needsAdmin = a.approval_level >= 3;
-                  const canRespond = a.status === "pending" && canApprove && (!needsAdmin || isAdmin);
+                  const canRespond = canRespondToAction(a, hasRole);
                   return (
                     <tr key={a.id} className="border-b border-border last:border-0 hover:bg-accent/50">
-                      <td className="px-4 py-3">
+                      <td data-label="Action" className="px-4 py-3">
                         <div>{a.action}</div>
                         {a.reason && <div className="text-xs text-muted-foreground">{a.reason}</div>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td data-label="Risk" className="px-4 py-3">
                         <Badge variant={RISK_VARIANT[a.risk] ?? "unknown"}>
                           L{a.approval_level} - {a.risk}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">
+                      <td data-label="Status" className="px-4 py-3">
                         <Badge variant={ACTION_STATUS_VARIANT[a.status] ?? "unknown"}>{a.status}</Badge>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{a.request_code}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{a.approved_by || "-"}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{timeAgo(a.requested_at)}</td>
-                      <td className="px-4 py-3">
+                      <td data-label="Code" className="px-4 py-3 font-mono text-xs text-muted-foreground">{a.request_code}</td>
+                      <td data-label="Approved by" className="px-4 py-3 text-muted-foreground">{a.approved_by || "-"}</td>
+                      <td data-label="Requested" className="px-4 py-3 text-muted-foreground">{timeAgo(a.requested_at)}</td>
+                      <td data-label="" className="px-4 py-3">
                         {a.status === "pending" && canRespond && (
                           <div className="flex justify-end gap-2">
                             <Button size="sm" variant="outline" disabled={busy === a.id} onClick={() => respond(a.id, "reject")}>

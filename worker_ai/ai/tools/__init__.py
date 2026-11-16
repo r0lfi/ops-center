@@ -28,6 +28,8 @@ from worker_ai.ai.tools.container_tools import (
     list_containers,
     list_docker_networks,
 )
+from worker_ai.ai.tools.diagnostic_tools import TOOL_SCHEMA as _DIAGNOSTIC_SCHEMA
+from worker_ai.ai.tools.diagnostic_tools import run_diagnostic
 from worker_ai.ai.tools.exec_tools import (
     EXPAND_DISK_SCHEMA,
     CONTAINER_ACTION_SCHEMA,
@@ -71,6 +73,7 @@ TOOL_REGISTRY = {
     "get_service_status": get_service_status,
     "get_disk_usage": get_disk_usage,
     "get_running_processes": get_running_processes,
+    "run_diagnostic": run_diagnostic,
     "get_patch_status": get_patch_status,
     "list_pending_patches": list_pending_patches,
     "get_security_summary": get_security_summary,
@@ -97,6 +100,7 @@ TOOL_SCHEMAS = {
     "get_service_status": GET_SERVICE_STATUS_SCHEMA,
     "get_disk_usage": GET_DISK_USAGE_SCHEMA,
     "get_running_processes": GET_RUNNING_PROCESSES_SCHEMA,
+    "run_diagnostic": _DIAGNOSTIC_SCHEMA,
     "get_patch_status": _PATCH_SCHEMA,
     "list_pending_patches": LIST_PENDING_PATCHES_SCHEMA,
     "get_security_summary": _SECURITY_SUMMARY_SCHEMA,

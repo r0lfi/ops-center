@@ -25,9 +25,10 @@ RUN groupadd --gid 1000 opssecurity && \
 WORKDIR /app
 
 COPY security/requirements.txt ./security-requirements.txt
+COPY security/constraints.txt ./security-constraints.txt
 RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools && \
-    /opt/venv/bin/pip install --no-cache-dir -r security-requirements.txt && \
+    /opt/venv/bin/pip install --no-cache-dir -r security-requirements.txt -c security-constraints.txt && \
     /opt/venv/bin/pip uninstall -y pip setuptools wheel
 
 ENV PATH="/opt/venv/bin:${PATH}" \
@@ -40,7 +41,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 COPY backend/app/models ./app/models
 COPY backend/app/db ./app/db
 COPY backend/app/core ./app/core
-RUN touch app/__init__.py
+COPY backend/app/services/container_inventory.py ./app/services/container_inventory.py
+RUN touch app/__init__.py app/services/__init__.py
 
 COPY security/*.py ./security/
 RUN touch security/__init__.py

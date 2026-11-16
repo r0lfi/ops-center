@@ -119,7 +119,7 @@ function ImagesTab({ hostname }: { hostname: string }) {
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-sm">
+      <table className="ops-card-table w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th className="px-4 py-3 font-medium">Repository:Tag</th>
@@ -140,16 +140,16 @@ function ImagesTab({ hostname }: { hostname: string }) {
           )}
           {images.map((img) => (
             <tr key={img.id} className="border-b border-border last:border-0 hover:bg-accent/50">
-              <td className="px-4 py-3 font-mono text-xs">
+              <td data-label="Repository:Tag" className="px-4 py-3 font-mono text-xs">
                 {img.repo_tags.length > 0 ? img.repo_tags.join(", ") : <span className="text-muted-foreground">&lt;none&gt;</span>}
               </td>
-              <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+              <td data-label="Image ID" className="px-4 py-3 font-mono text-xs text-muted-foreground">
                 {img.id.replace("sha256:", "").slice(0, 12)}
               </td>
-              <td className="px-4 py-3 text-muted-foreground">{formatRelativeTime(img.created)}</td>
-              <td className="px-4 py-3">{formatBytes(img.size_bytes)}</td>
-              <td className="px-4 py-3">{img.container_count}</td>
-              <td className="px-4 py-3">
+              <td data-label="Created" className="px-4 py-3 text-muted-foreground">{formatRelativeTime(img.created)}</td>
+              <td data-label="Size" className="px-4 py-3">{formatBytes(img.size_bytes)}</td>
+              <td data-label="Containers using image" className="px-4 py-3">{img.container_count}</td>
+              <td data-label="Update status" className="px-4 py-3">
                 <ImageUpdateCell hostname={hostname} image={img} />
               </td>
             </tr>
@@ -178,7 +178,7 @@ function NetworksTab({ hostname }: { hostname: string }) {
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-sm">
+      <table className="ops-card-table w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th className="px-4 py-3 font-medium">Name</th>
@@ -199,12 +199,12 @@ function NetworksTab({ hostname }: { hostname: string }) {
           )}
           {networks.map((net) => (
             <tr key={net.id} className="border-b border-border last:border-0 hover:bg-accent/50">
-              <td className="px-4 py-3 font-medium">{net.name}</td>
-              <td className="px-4 py-3">{net.driver}</td>
-              <td className="px-4 py-3 text-muted-foreground">{net.scope}</td>
-              <td className="px-4 py-3 font-mono text-xs">{net.subnet ?? "-"}</td>
-              <td className="px-4 py-3 font-mono text-xs">{net.gateway ?? "-"}</td>
-              <td className="px-4 py-3 text-muted-foreground">
+              <td data-label="Name" className="px-4 py-3 font-medium">{net.name}</td>
+              <td data-label="Driver" className="px-4 py-3">{net.driver}</td>
+              <td data-label="Scope" className="px-4 py-3 text-muted-foreground">{net.scope}</td>
+              <td data-label="Subnet" className="px-4 py-3 font-mono text-xs">{net.subnet ?? "-"}</td>
+              <td data-label="Gateway" className="px-4 py-3 font-mono text-xs">{net.gateway ?? "-"}</td>
+              <td data-label="Containers" className="px-4 py-3 text-muted-foreground">
                 {net.containers.length === 0 ? "-" : net.containers.map((c) => c.name).join(", ")}
               </td>
             </tr>
@@ -233,7 +233,7 @@ function VolumesTab({ hostname }: { hostname: string }) {
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-sm">
+      <table className="ops-card-table w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th className="px-4 py-3 font-medium">Name</th>
@@ -252,10 +252,10 @@ function VolumesTab({ hostname }: { hostname: string }) {
           )}
           {volumes.map((vol) => (
             <tr key={vol.name} className="border-b border-border last:border-0 hover:bg-accent/50">
-              <td className="px-4 py-3 font-mono text-xs">{vol.name}</td>
-              <td className="px-4 py-3">{vol.driver}</td>
-              <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{vol.mountpoint}</td>
-              <td className="px-4 py-3 text-muted-foreground">{formatRelativeTime(vol.created)}</td>
+              <td data-label="Name" className="px-4 py-3 font-mono text-xs">{vol.name}</td>
+              <td data-label="Driver" className="px-4 py-3">{vol.driver}</td>
+              <td data-label="Mountpoint" className="px-4 py-3 font-mono text-xs text-muted-foreground">{vol.mountpoint}</td>
+              <td data-label="Created" className="px-4 py-3 text-muted-foreground">{formatRelativeTime(vol.created)}</td>
             </tr>
           ))}
         </tbody>
@@ -326,7 +326,7 @@ function EventsTab({ hostname }: { hostname: string }) {
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full text-sm">
+          <table className="ops-card-table w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Time</th>
@@ -351,12 +351,12 @@ function EventsTab({ hostname }: { hostname: string }) {
                     key={`${ev.occurred_at}-${ev.actor_id}-${idx}`}
                     className="border-b border-border last:border-0 hover:bg-accent/50"
                   >
-                    <td className="px-4 py-3 text-muted-foreground">{formatRelativeTime(ev.occurred_at)}</td>
-                    <td className="px-4 py-3">
+                    <td data-label="Time" className="px-4 py-3 text-muted-foreground">{formatRelativeTime(ev.occurred_at)}</td>
+                    <td data-label="Type" className="px-4 py-3">
                       <Badge variant="unknown">{ev.event_type}</Badge>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs">{ev.action}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{label}</td>
+                    <td data-label="Action" className="px-4 py-3 font-mono text-xs">{ev.action}</td>
+                    <td data-label="Actor" className="px-4 py-3 font-mono text-xs text-muted-foreground">{label}</td>
                   </tr>
                 );
               })}

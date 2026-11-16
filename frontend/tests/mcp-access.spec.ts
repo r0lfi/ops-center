@@ -6,7 +6,7 @@ const tools = [
   { name: "ops_restart_container", description: "Restart a container after human approval.", scope: "ops:containers:write", minimum_role: "admin", method: "POST" },
 ];
 async function mock(page: import("@playwright/test").Page) {
-  await page.addInitScript(() => localStorage.setItem("ops_center_token", "mcp-browser-test-only"));
+  await page.addInitScript(() => (document.cookie = "ops_refresh=" + "mcp-browser-test-only" + "; path=/"));
   await page.route("**/api/auth/me", r => r.fulfill({ json: user }));
   await page.route("**/api/users", r => r.fulfill({ json: [user] }));
   await page.route("**/api/ai/agents", r => r.fulfill({ json: [{ id: "22222222-2222-4222-8222-222222222222", name: "Operations agent", enabled: true, allowed_tools: ["get_alerts"] }] }));

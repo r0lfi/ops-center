@@ -1,0 +1,33 @@
+---
+# Compares ops_packages_before (package_facts taken before patching) with
+# the current package_facts and reports one machine-readable line that Ops
+# Center's patch reports turn into a per-host package table:
+#   OPS_CENTER_PACKAGE_CHANGES:{"changes": [{name, from, to}], "reboot_required": bool}
+# Include it after a fresh `package_facts`. from/to are empty for installs/removals.
+- name: Check whether a reboot is required
+  ansible.builtin.shell: |
+    if [ -f /var/run/reboot-required ]; then echo yes
+    elif command -v needs-restarting >/dev/null 2>&1; then needs-restarting -r >/dev/null 2>&1 && echo no || echo yes
+    else echo unknown; fi
+  register: ops_reboot_check
+  changed_when: false
+  failed_when: false
+  check_mode: false  # read-only probe
+
+- name: Report package changes
+  ansible.builtin.debug:
+    msg: >-
+      OPS_CENTER_PACKAGE_CHANGES:{{ {'changes': ops_package_changes, 'reboot_required': ops_reboot_check.stdout | default('unknown') | trim} | to_json }}
+  vars:
+    ops_package_changes: >-
+      {%- set out = [] -%}
+      {%- set before = ops_packages_before | default({}) -%}
+      {%- set after = ansible_facts.packages | default({}) -%}
+      {%- for name in (before.keys() | list + after.keys() | list) | unique | sort -%}
+        {%- set old = [] -%}{%- for p in before.get(name, []) -%}{%- set _ = old.append(p.version ~ (('-' ~ p.release) if p.release | default('') else '')) -%}{%- endfor -%}
+        {%- set new = [] -%}{%- for p in after.get(name, []) -%}{%- set _ = new.append(p.version ~ (('-' ~ p.release) if p.release | default('') else '')) -%}{%- endfor -%}
+        {%- if (old | sort) != (new | sort) -%}
+          {%- set _ = out.append({'name': name, 'from': old | sort | join(', '), 'to': new | sort | join(', ')}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}

@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Traffic Map opens its own wallboard and preserves filters through refresh and return", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("ops_center_token", "pwa-test-only"));
+  await page.addInitScript(() => (document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/traffic-map?hours=168&service=vpn&errors=true");

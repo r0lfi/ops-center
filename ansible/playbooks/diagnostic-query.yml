@@ -1,0 +1,33 @@
+---
+# Read-only diagnostics for the AI agents' run_diagnostic tool
+# (worker_ai/ai/tools/diagnostic_tools.py). Runs WITHOUT an approval step,
+# so it is deliberately narrow: diag_commands is a list of argv lists built
+# from a fixed catalog of read-only checks in diagnostic_tools.py, with
+# every caller-supplied value regex-validated there (no braces, no leading
+# '-', no whitespace in names). ansible.builtin.command with argv - never
+# shell - so there are no pipes, redirects or word splitting to inject into.
+# Anything outside the catalog still goes through run_shell_command and a
+# human approval.
+- name: Read-only diagnostic query (AI agents)
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Run diagnostic commands
+      ansible.builtin.command:
+        # 25 s per command; the package checks pass a longer, fixed diag_timeout.
+        argv: "{{ ['timeout', (diag_timeout | default(25) | int | string)] + item }}"
+      loop: "{{ diag_commands }}"
+      register: diag_result
+      changed_when: false
+      failed_when: false
+
+    - name: Emit structured query result
+      ansible.builtin.debug:
+        msg: >-
+          OPS_CENTER_QUERY_RESULT:{{ {
+            'results': diag_result.results | map('dict2items')
+              | map('selectattr', 'key', 'in', ['item', 'rc', 'stdout', 'stderr'])
+              | map('items2dict') | list
+          } | to_json }}

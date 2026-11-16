@@ -1,6 +1,6 @@
 # Reviewed MCP tool catalog
 
-This is an explicit catalog. New REST routes require review and a catalog update. All writes require a separate human decision. Current role, client policy, grant and token scopes still apply.
+This is an explicit catalog. New REST routes require review and a catalog update. All writes require a separate human decision, except the AI task tools an administrator explicitly pre-approves for one client (see [MCP access](mcp.md#pre-approved-ai-task-tools)). Current role, client policy, grant and token scopes still apply.
 
 | Tool | Role | Scope | REST operation |
 | --- | --- | --- | --- |
@@ -108,6 +108,7 @@ This is an explicit catalog. New REST routes require review and a catalog update
 | `ops_get_agent` | viewer | `ops:ai:read` | `GET /api/ai/agents/{agent_id}` |
 | `ops_update_agent` | admin | `ops:ai:write` | `PATCH /api/ai/agents/{agent_id}` |
 | `ops_delete_agent` | admin | `ops:ai:write` | `DELETE /api/ai/agents/{agent_id}` |
+| `ops_report_agent_status` | operator | `ops:ai:write` | `POST /api/ai/agents/{agent_id}/report` |
 | `ops_ask_ops_ai` | operator | `ops:ai:write` | `POST /api/ai/ask` |
 | `ops_list_tasks` | viewer | `ops:ai:read` | `GET /api/ai/tasks` |
 | `ops_usage_by_day` | viewer | `ops:ai:read` | `GET /api/ai/usage` |

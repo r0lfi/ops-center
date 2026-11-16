@@ -15,6 +15,7 @@
     # {% raw %} keeps it literal; the variable is then substituted as
     # plain text into the shell command below (not re-templated).
     docker_inspect_format: "{% raw %}{{json .}}{% endraw %}"
+    docker_stats_format: "{% raw %}{{json .}}{% endraw %}"
 
   tasks:
     - name: Check whether docker is available
@@ -40,8 +41,17 @@
       changed_when: false
       failed_when: false
 
+    - name: Collect current resource snapshots in one batch
+      when: docker_present.rc == 0 and (container_inspect.rc | default(1)) == 0
+      ansible.builtin.command:
+        argv: ["docker", "stats", "--all", "--no-stream", "--format", "{{ docker_stats_format }}"]
+      register: container_stats
+      changed_when: false
+      failed_when: false
+
     - name: Emit structured results
       ansible.builtin.debug:
         msg: >-
-          OPS_CENTER_CONTAINERS:{{ {'containers':
+          OPS_CENTER_CONTAINERS:{{ {'ok': (docker_present.rc == 0 and (container_inspect.rc | default(1)) == 0),
+          'stats': (container_stats.stdout_lines | default([])), 'containers':
           (container_inspect.stdout_lines | default([]) if docker_present.rc == 0 else [])} | to_json }}

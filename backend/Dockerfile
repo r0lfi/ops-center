@@ -12,10 +12,10 @@ RUN groupadd --gid 1000 opsapi && \
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY requirements.txt constraints.txt ./
 RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt -c constraints.txt && \
     /opt/venv/bin/pip uninstall -y pip setuptools wheel
 
 ENV PATH="/opt/venv/bin:${PATH}" \

@@ -13,7 +13,7 @@ export default defineConfig({
     includeManifestIcons: false,
     injectManifest: {
       globPatterns: ["assets/**/*.{js,css,woff,woff2,png,jpg,jpeg,svg,gif,webp}", "icons/*.{png,svg}", "offline.{html,css,js}"],
-      // The existing Three.js UI includes a large bundle; only build assets qualify.
+      // Only build assets qualify.
       maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
     },
     manifest: {

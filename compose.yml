@@ -85,10 +85,19 @@ services:
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-[]}
       TALK_MEMORY_BINDINGS: ${TALK_MEMORY_BINDINGS:-[]}
+      TALK_AGENT_ROUTES: ${TALK_AGENT_ROUTES:-[]}
+      AI_TRAFFIC_INGEST_TOKEN: ${AI_TRAFFIC_INGEST_TOKEN:-}
+      NOVA_DATA_SOURCES: ${NOVA_DATA_SOURCES:-[]}
       TALK_BACKEND_URL: ${TALK_BACKEND_URL:-}
       TALK_NOTIFICATIONS_ENABLED: ${TALK_NOTIFICATIONS_ENABLED:-false}
       API_LOG_LEVEL: ${API_LOG_LEVEL:-info}
-      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      SESSION_REMEMBER_IDLE_DAYS: ${SESSION_REMEMBER_IDLE_DAYS:-30}
+      SESSION_REMEMBER_ABSOLUTE_DAYS: ${SESSION_REMEMBER_ABSOLUTE_DAYS:-90}
+      SESSION_IDLE_HOURS: ${SESSION_IDLE_HOURS:-12}
+      SESSION_ABSOLUTE_HOURS: ${SESSION_ABSOLUTE_HOURS:-72}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      REAUTH_MAX_AGE_SECONDS: ${REAUTH_MAX_AGE_SECONDS:-300}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
         the installer to generate POSTGRES_PASSWORD}@${DATABASE_HOST:-postgres}:5432/${POSTGRES_DB}
       DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
@@ -115,6 +124,8 @@ services:
       GO2RTC_URL: ${GO2RTC_URL:-}
       WIREGUARD_URL: ${WIREGUARD_URL:-}
       WIREGUARD_PASSWORD_PATH: ${WIREGUARD_PASSWORD_PATH:-integrations/wireguard-admin-password}
+      MONITORING_CONTAINER_TARGETS: ${MONITORING_CONTAINER_TARGETS:-}
+      PROMETHEUS_QUERY_URL: ${PROMETHEUS_QUERY_URL:-http://prometheus:9090}
     volumes:
     - ${DATA_ROOT:-/data/ops-center}/secrets:/app/secrets:ro,z
     - ${DATA_ROOT:-/data/ops-center}/secrets/ai-providers:/app/secrets/ai-providers:z
@@ -265,14 +276,11 @@ services:
     image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
-    command:
-    - celery
-    - -A
-    - worker.celery_app:celery_app
-    - beat
-    - --loglevel=info
-    - -S
-    - redbeat.RedBeatScheduler
+    # --max-interval 10: redbeat derives its lock TTL from this (5x = 50s) and
+    # the standby beat on the other host polls for the lock at this interval.
+    # With the 300s default the lock lived 25 min, so a beat that died on a
+    # Redis failover blocked all scheduled tasks for up to 25 min.
+    command: ["celery", "-A", "worker.celery_app:celery_app", "beat", "--loglevel=info", "-S", "redbeat.RedBeatScheduler", "--max-interval", "10"]
     networks:
     - backend
     - database
@@ -311,6 +319,8 @@ services:
       dockerfile: worker_ai/Dockerfile
     image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/ai-worker:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    labels:
+      ops-center.ai-traffic: "1"
     init: true
     networks:
     - backend
@@ -322,6 +332,7 @@ services:
       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-[]}
       TALK_MEMORY_BINDINGS: ${TALK_MEMORY_BINDINGS:-[]}
+      NOVA_DATA_SOURCES: ${NOVA_DATA_SOURCES:-[]}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
         the installer to generate POSTGRES_PASSWORD}@${DATABASE_HOST:-postgres}:5432/${POSTGRES_DB}
       DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD:?Run
@@ -361,6 +372,58 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # ---------------------------------------------------------------------
+  # AI Traffic Monitor - passive collector (ai_traffic_collector/, Rust).
+  # Read-only: subscribes to this host's conntrack NEW/DESTROY events and
+  # captures packet headers (SYN/RST, DNS, TLS ClientHello, ICMP errors)
+  # of the AI containers on their bridges. It adds no firewall rule, route,
+  # proxy or policy and never decrypts. Host network/PID namespaces are
+  # needed to see the bridges, conntrack and /proc; docker.sock only for
+  # GET of container addresses. Posts to ops-api through the local proxy
+  # with its per-node AI_TRAFFIC_COLLECTOR_TOKEN; without one it idles.
+  # ---------------------------------------------------------------------
+  ai-traffic-collector:
+    build:
+      context: ./ai_traffic_collector
+    image: ${IMAGE_PREFIX:-ghcr.io/r0lfi/ops-center}/ai-traffic-collector:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    pid: host
+    read_only: true
+    tmpfs:
+    - /tmp:size=64m
+    environment:
+      AI_TRAFFIC_NODE: ${OPS_LOCAL_HOSTNAME:-ops-host}
+      # Only this node's derived token, never the API's secret (see .env.example).
+      AI_TRAFFIC_INGEST_TOKEN: ${AI_TRAFFIC_COLLECTOR_TOKEN:-}
+      AI_TRAFFIC_API: http://127.0.0.1:${PROXY_HTTP_PORT:-8080}
+      # Containers labelled ops-center.ai-traffic=1 are observed; names are optional.
+      AI_TRAFFIC_CONTAINERS: ${AI_TRAFFIC_CONTAINERS:-}
+      AI_TRAFFIC_CAPTURE: ${AI_TRAFFIC_CAPTURE:-1}
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    cap_drop:
+    - ALL
+    cap_add:
+    - NET_ADMIN        # subscribe to conntrack netlink events (no writes)
+    - NET_RAW          # header-only packet capture
+    - SYS_PTRACE       # read /proc/<pid>/fd of the AI worker's processes
+    - DAC_READ_SEARCH
+    security_opt:
+    - no-new-privileges:true
+    mem_limit: 128m
+    cpus: 0.5
+    logging: *id001
+    # Optional: start with `docker compose --profile ai-traffic up -d`.
+    profiles:
+    - ai-traffic
+
+  # ---------------------------------------------------------------------
+  # Prometheus - metrics storage + scraping. Internal only (not published
+  # to the host, not routed through the proxy - "internal API").
+  # ---------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:v3.1.0
     restart: unless-stopped

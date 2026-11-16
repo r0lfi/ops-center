@@ -3,6 +3,13 @@
 @tailwind utilities;
 
 @layer base {
+  /* Native dropdowns follow the dark theme everywhere. A select whose own
+     background is transparent otherwise gets a white option list from the browser. */
+  select { color-scheme: dark; }
+  select option, select optgroup { background-color: hsl(var(--card)); color: hsl(var(--foreground)); }
+  select option:checked { background-color: hsl(var(--primary) / 0.25); color: hsl(var(--foreground)); }
+  select option:disabled { color: hsl(var(--muted-foreground)); }
+
   :root,
   .dark {
     color-scheme: dark;
@@ -18,7 +25,7 @@
     --popover-foreground: 210 20% 92%;
 
     --primary: 199 89% 48%;
-    --primary-foreground: 210 20% 98%;
+    --primary-foreground: 222 30% 6%;
 
     --secondary: 222 20% 16%;
     --secondary-foreground: 210 20% 92%;
@@ -38,8 +45,8 @@
 
     --status-ok: 142 71% 45%;
     --status-warning: 38 92% 50%;
-    --status-critical: 0 72% 51%;
-    --status-unknown: 215 16% 47%;
+    --status-critical: 0 85% 65%;
+    --status-unknown: 215 16% 62%;
 
     --radius: 0.5rem;
   }
@@ -66,41 +73,7 @@
   }
 }
 
-/* Ops Floor is a dedicated full-viewport room. Other routes retain their shell. */
-.ops-floor-page { background:#070B12; color:#F3F7FB; font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; height:100dvh; display:grid; grid-template-rows:76px minmax(0,1fr) 30px; padding:0 12px; overflow:hidden; }
-.ops-floor-header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 6px; }
-.ops-floor-counters { display:flex; align-items:center; justify-content:center; gap:14px; width:560px; }
-.ops-floor-main { display:grid; grid-template-columns:minmax(0,1fr) 360px; min-height:0; gap:10px; padding-bottom:2px; }
-.ops-floor-sidebar { display:grid; grid-template-rows:minmax(360px,1.05fr) minmax(180px,1fr); min-height:0; gap:10px; background:#080D15; }
-.ops-floor-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 8px; }
-.ops-floor-footer > div { white-space:nowrap; }
-.ops-floor-motto { padding-left:28px; }
-.ops-nameplate { width:150px; height:45px; padding:6px 10px; border-radius:7px; background:rgba(6,14,22,.88); border:1px solid #29455F; backdrop-filter:blur(8px); box-shadow:0 4px 16px #02040980; pointer-events:auto; text-align:left; }
-.ops-nameplate:focus-visible { outline:2px solid #00D9FF; }
-.ops-nameplate-name { line-height:17px; display:flex; align-items:center; gap:7px; font-size:14px; font-weight:700; color:#F3F7FB; white-space:nowrap; }
-.ops-nameplate-status { display:block; line-height:14px; padding-left:15px; font-size:11px; }
-.ops-agent-identity { width:72px; height:58px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; border:1px solid; border-radius:8px; font-size:9px; font-weight:700; letter-spacing:.08em; }
-.ops-agent-identity-linux { border-color:#29455F; background:#111B29; color:#00D9FF; }
-.ops-agent-identity-linux img { width:32px; height:36px; object-fit:contain; }
-.ops-service-badges { display:flex; flex-wrap:wrap; gap:5px; }
-.ops-service-badges span { padding:3px 7px; border:1px solid; border-radius:5px; background:#111B29; font-size:10px; line-height:1.1; }
-.ops-inline-chat { padding:10px; border:1px solid #1C2D40; border-radius:7px; background:#090E17; }
-.ops-inline-chat label { display:block; margin-bottom:6px; color:#8799AD; font-size:11px; }
-.ops-inline-chat textarea { width:100%; resize:vertical; min-height:42px; border:1px solid #29455F; border-radius:5px; background:#111B29; color:#F3F7FB; padding:7px 8px; font-size:12px; outline:none; }
-.ops-inline-chat textarea:focus { border-color:#00B8E6; box-shadow:0 0 0 2px #00D9FF22; }
-.ops-inline-chat textarea::placeholder { color:#586A7D; }
-.ops-inline-chat button { display:inline-flex; align-items:center; gap:5px; border:1px solid #00AEE8; border-radius:5px; background:#10273A; color:#74DCFF; padding:5px 9px; font-size:11px; font-weight:600; }
-.ops-inline-chat button:disabled { opacity:.45; cursor:not-allowed; }
-.ops-inline-hint { color:#586A7D; font-size:10px; }
-.ops-inline-reply { max-width:190px; overflow:hidden; color:#9BAFC1; font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
-@media(max-width:1500px) { .ops-floor-main { grid-template-columns:minmax(0,1fr) 320px; } .ops-floor-counters { width:auto; padding:0 14px; gap:10px; } }
-@media(max-width:1100px) { .ops-floor-header { flex-wrap:wrap; gap:6px; } .ops-floor-page { grid-template-rows:110px minmax(0,1fr) 30px; } .ops-floor-counters { order:3; width:100%; height:32px!important; } .ops-floor-motto { display:none; } .ops-floor-main { grid-template-columns:minmax(0,1fr) 280px; } }
-@media(max-width:760px) { .ops-floor-page { height:auto; min-height:100dvh; overflow:visible; grid-template-rows:110px auto 50px; padding:0 8px; } .ops-floor-main { display:flex; flex-direction:column; } .ops-floor-main > div:first-child { height:65dvh; min-height:440px; } .ops-floor-sidebar { grid-template-rows:auto 320px; } .ops-floor-counters { gap:6px; padding:0 4px; } .ops-floor-counters span { font-size:10px!important; } .ops-floor-footer { flex-wrap:wrap; } }
 
-.ops-task-progress { height:5px; overflow:hidden; background:#192A3C; border-radius:4px; margin-top:10px; }
-.ops-task-progress span { display:block; height:100%; width:35%; background:#24B8F2; border-radius:4px; animation:ops-progress 2.4s ease-in-out infinite; }
-@keyframes ops-progress { 0% { transform:translateX(-100%); } 100% { transform:translateX(390%); } }
-@media(prefers-reduced-motion:reduce) { .ops-task-progress span { animation:none; } }
 
 /* Dark, quiet scrollbars for navigation and the application content. */
 .ops-scrollbar {
@@ -119,7 +92,82 @@
 /* Optional PWA notices, independent of page layout. */
 .pwa-offline { position:fixed; inset:0; z-index:100; display:grid; place-items:center; overflow:auto; padding:max(1.5rem,env(safe-area-inset-top)) max(1.5rem,env(safe-area-inset-right)) max(1.5rem,env(safe-area-inset-bottom)) max(1.5rem,env(safe-area-inset-left)); background:hsl(var(--background)); }
 .pwa-update { position:fixed; bottom:max(1rem,env(safe-area-inset-bottom)); left:max(1rem,env(safe-area-inset-left)); z-index:90; display:flex; align-items:center; gap:.75rem; max-width:min(36rem,calc(100vw - 2rem)); padding:.75rem 1rem; border:1px solid hsl(var(--border)); border-radius:.75rem; background:hsl(var(--card)); box-shadow:0 4px 20px #0008; font-size:.875rem; }
-@media (display-mode:standalone) {
-  #root { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-  #root .fixed.inset-0 { top:env(safe-area-inset-top); right:env(safe-area-inset-right); bottom:env(safe-area-inset-bottom); left:env(safe-area-inset-left); }
+/* Notches and home bars, in Safari's landscape view as well as an installed app. The insets are 0 elsewhere. */
+#root { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+#root .fixed.inset-0 { top:env(safe-area-inset-top); right:env(safe-area-inset-right); bottom:env(safe-area-inset-bottom); left:env(safe-area-inset-left); }
+
+/* Anything focusable shows where the keyboard is, even without its own ring. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+
+/* Wide tables turn into one labelled card per row on phones. */
+@media (max-width: 767.98px) {
+  .ops-card-table, .ops-card-table > tbody { display: block; width: 100%; min-width: 0 !important; }
+  .ops-card-table > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  /* Sort and select-all controls live in the header, so a table that has them keeps a bar of just those. */
+  .ops-card-table > thead:has(th.cursor-pointer, th input) { position: static; display: block; width: auto; height: auto; overflow: visible; clip-path: none; }
+  .ops-card-table > thead:has(th.cursor-pointer, th input) > tr { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.75rem; padding: 0 1rem; }
+  .ops-card-table > thead:has(th.cursor-pointer, th input) th { display: flex; align-items: center; min-height: 2.75rem; padding: 0; }
+  .ops-card-table > thead:has(th.cursor-pointer, th input) th:not(.cursor-pointer, :has(input)) { display: none; }
+  .ops-card-table > tbody > tr { display: block; padding: 0.25rem 0; border-bottom: 1px solid hsl(var(--border)); }
+  .ops-card-table > tbody > tr > th, .ops-card-table > tbody > tr > td[colspan], .ops-card-table > tbody > tr > td:not([data-label]) { display: block; }
+  .ops-card-table > tbody > tr > td[data-label=""] { justify-content: flex-end; }
+  .ops-card-table > tbody > tr > td[data-label=""]::before { display: none; }
+  .ops-card-table > tbody > tr > td[data-label] { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; max-width: none; padding: 0.375rem 1rem; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .ops-card-table > tbody > tr > td[data-label]::before { content: attr(data-label); flex-shrink: 0; color: hsl(var(--muted-foreground)); font-size: 0.75rem; font-weight: 400; text-align: left; }
 }
+
+/* Fingers: phones, and any touch screen whatever its width. A mouse on a desktop keeps the compact controls. */
+@media (max-width: 767.98px), (pointer: coarse) {
+  button, select, summary, [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [role="option"],
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"], [type="file"], [type="color"]),
+  a.inline-flex, a.flex { min-height: 2.75rem; }
+  button, select, [role="button"], [role="switch"], a.inline-flex { min-width: 2.75rem !important; }
+  summary { padding-block: 0.6rem; }
+  a.block { min-height: 2.75rem; }
+  /* Below 16px, iOS zooms the whole page when a field gets focus. */
+  input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea { font-size: 16px !important; }
+  input[type="checkbox"], input[type="radio"] { width: 1.5rem; height: 1.5rem; flex-shrink: 0; }
+  label:has(> input[type="checkbox"], > input[type="radio"]) { min-height: 2.75rem; }
+  /* Links that stand alone: breadcrumbs and icon-only links. */
+  nav a, main a:not(.block, .flex, .inline-flex, :is(p, li, td, dd) a) { display: inline-flex; align-items: center; min-height: 2.75rem; }
+  main a:has(> svg:only-child) { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; min-width: 2.75rem !important; }
+}
+
+/* A long unbroken value (an error, a path, a hash) wraps instead of running off the page. */
+:is(main, [role="dialog"]) { overflow-wrap: break-word; }
+
+/* Up to small desktops: flex and grid children otherwise refuse to shrink below their longest word. */
+@media (max-width: 1023.98px) {
+  :is(main, [role="dialog"]) :is(.flex, .inline-flex, .grid) > * { min-width: 0; }
+}
+
+/* Narrow screens: long names wrap and nothing pushes the page sideways. */
+@media (max-width: 767.98px) {
+  /* Flex and grid children otherwise refuse to shrink below their longest word. */
+  :is(main, [role="dialog"]) :is(.flex, .inline-flex, .grid) > :is(button, a.inline-flex, svg) { flex-shrink: 0; }
+  :is(main, [role="dialog"]) :is(button, a.inline-flex) { height: auto; max-width: 100%; white-space: normal; }
+  :is(main, [role="dialog"]) :is(code, kbd, .font-mono) { overflow-wrap: anywhere; }
+  /* A label and its value share a line while they fit, and stack when they do not. */
+  :is(main, [role="dialog"]) .flex.justify-between { flex-wrap: wrap; }
+  /* A row of buttons wraps. Rows of text keep truncating instead. */
+  :is(main, [role="dialog"]) .flex:has(> :is(button, a.inline-flex) ~ :is(button, a.inline-flex)) { flex-wrap: wrap; }
+  /* Logs and terminal output scroll inside their own box. */
+  pre { max-width: 100%; overflow-x: auto; overflow-wrap: normal; -webkit-overflow-scrolling: touch; }
+  /* Body text. Captions (text-xs) stay small so dashboards stay compact. */
+  :is(main, [role="dialog"]) :is(p, li, dd, dt, td, th, div, span, label, table).text-sm { font-size: 1rem; line-height: 1.5rem; }
+  select, details { max-width: 100%; }
+  main > .container { padding-inline: 1rem; }
+  /* Everything that overlays the page fits on it. */
+  [role="menu"], [role="listbox"] { max-width: calc(100vw - 1rem); max-height: 70dvh; overflow-y: auto; }
+}
+
+/* AI Traffic Monitor Live Map: a calm dash along lines active in the last minute. */
+.ai-map-flow { stroke-dasharray: 4 7; animation: ai-map-dash 1.8s linear infinite; }
+@keyframes ai-map-dash { to { stroke-dashoffset: -22; } }
+@media (prefers-reduced-motion: reduce) { .ai-map-flow { animation: none; stroke-dasharray: none; } }
+
+/* AI overview agent strip: a slow light sweep across agents that are working. */
+.of-strip-working { position: relative; overflow: hidden; }
+.of-strip-working::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, hsl(var(--primary) / 0.12) 50%, transparent 70%); transform: translateX(-100%); animation: of-strip-sweep 2.6s ease-in-out infinite; pointer-events: none; }
+@keyframes of-strip-sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .of-strip-working::after { animation: none; display: none; } }

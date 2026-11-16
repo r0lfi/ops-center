@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDateTime } from "@/lib/format";
 
 const PADDING = 4;
 const SIZES = {
@@ -55,8 +56,8 @@ export function MetricSparkline({
   const { path, plotted, minV, maxV } = useMemo(() => {
     if (points.length === 0) return { path: "", plotted: [] as Point[], minV: 0, maxV: 0 };
     const values = points.map((p) => p[1]);
-    const minV = Math.min(...values, 0);
-    const maxV = Math.max(...values, 1);
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
     const tMin = points[0][0];
     const tMax = points[points.length - 1][0];
     const tSpan = tMax - tMin || 1;
@@ -150,16 +151,16 @@ export function MetricSparkline({
         </svg>
       ) : (
         <div className={`${boxClass} flex items-center justify-center text-xs text-muted-foreground`}>
-          no data yet
+          {plotted.length === 1 ? "Only one sample in this time range" : "No data in this time range"}
         </div>
       )}
       {hover && (
         <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>{new Date(hover.ts * 1000).toLocaleTimeString()}</span>
+          <span>{formatDateTime(hover.ts * 1000)}</span>
           <span className="font-medium text-foreground">{fmt(hover.value)}</span>
         </div>
       )}
-      {!hover && plotted.length > 1 && (
+      {!hover && plotted.length > 0 && (
         <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
           <span>min {fmt(minV)}</span>
           <span>max {fmt(maxV)}</span>

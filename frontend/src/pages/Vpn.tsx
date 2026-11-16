@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Wifi } from "lucide-react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { OverflowMenu } from "@/components/ui/overflow-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -50,7 +52,7 @@ function ArchitectureReference() {
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="ops-card-table w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="w-56 px-4 py-3 font-medium">Component</th>
@@ -60,7 +62,7 @@ function ArchitectureReference() {
             <tbody>
               {ARCHITECTURE_REFERENCE.map((row) => (
                 <tr key={row.component} className="border-b border-border last:border-0 hover:bg-accent/50">
-                  <td className="px-4 py-3 font-medium">
+                  <td data-label="Component" className="px-4 py-3 font-medium">
                     <span className="flex items-center gap-2">
                       {row.status && (
                         <span
@@ -77,7 +79,7 @@ function ArchitectureReference() {
                       {row.component}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{row.detail}</td>
+                  <td data-label="Detail" className="px-4 py-3 text-muted-foreground">{row.detail}</td>
                 </tr>
               ))}
             </tbody>
@@ -95,7 +97,7 @@ function peerVariant(peer: VpnPeer): "ok" | "warning" | "critical" {
   return age < STALE_AFTER_SECONDS ? "ok" : "warning";
 }
 
-function PeerCard({ peer, onDelete, canManage }: { peer: VpnPeer; onDelete: (id: string) => void; canManage: boolean }) {
+function PeerCard({ peer, onDelete, canManage }: { peer: VpnPeer; onDelete: (peer: VpnPeer) => void; canManage: boolean }) {
   const variant = peerVariant(peer);
   return (
     <Card>
@@ -126,10 +128,8 @@ function PeerCard({ peer, onDelete, canManage }: { peer: VpnPeer; onDelete: (id:
           </p>
         )}
         {canManage && (
-          <div className="pt-2">
-            <Button size="sm" variant="destructive" onClick={() => onDelete(peer.id)}>
-              Remove
-            </Button>
+          <div className="flex justify-end pt-2">
+            <OverflowMenu label={`More actions for ${peer.name}`} items={[{ label: "Remove peer", destructive: true, onSelect: () => onDelete(peer) }]} />
           </div>
         )}
       </CardContent>
@@ -197,6 +197,9 @@ function AddPeerDialog({ onCreated }: { onCreated: () => void }) {
 export default function Vpn() {
   const { hasRole } = useAuth();
   const [peers, setPeers] = useState<VpnPeer[] | null>(null);
+  const [removing, setRemoving] = useState<VpnPeer | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canManage = hasRole("admin");
 
@@ -216,38 +219,41 @@ export default function Vpn() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  async function handleDelete(id: string) {
-    if (!confirm("Remove this VPN peer? Its config will stop working immediately.")) return;
-    await api.vpn.remove(id);
+  async function handleDelete() {
+    if (!removing) return;
+    setBusy(true);
+    setRemoveError(null);
+    try {
+      await api.vpn.remove(removing.id);
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : "Could not remove this peer");
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+    setRemoving(null);
     refresh();
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Wifi className="h-5 w-5" />
-            VPN
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Manage peers through the configured WireGuard integration. Ops Center authenticates on the server; credentials are never sent to your browser.
-          </p>
-        </div>
-        {canManage && <AddPeerDialog onCreated={refresh} />}
-      </div>
+      <PageHeader title="VPN" description={<>Manage peers through the configured WireGuard integration. Ops Center authenticates on the server; credentials are never sent to your browser.</>} actions={<>{canManage && <AddPeerDialog onCreated={refresh} />}</>} />
 
       {error && <p className="text-sm text-status-warning">{error}</p>}
 
       {peers && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {peers.map((peer) => (
-            <PeerCard key={peer.id} peer={peer} onDelete={handleDelete} canManage={canManage} />
+            <PeerCard key={peer.id} peer={peer} onDelete={(target) => { setRemoveError(null); setRemoving(target); }} canManage={canManage} />
           ))}
         </div>
       )}
 
       <ArchitectureReference />
+
+      <ConfirmDialog open={removing !== null} title={`Remove VPN peer "${removing?.name ?? ""}"?`} confirmLabel="Remove peer" busy={busy} error={removeError} onCancel={() => setRemoving(null)} onConfirm={handleDelete}>
+        Its config stops working immediately.
+      </ConfirmDialog>
     </div>
   );
 }

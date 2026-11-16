@@ -60,3 +60,5 @@
 .traffic-auth-notice span,.traffic-auth-observation span{color:#8da4ba}
 .traffic-auth-banner time{margin-left:auto;color:#7891ab;font-size:10px;white-space:nowrap}
 @media(max-width:640px){.traffic-auth-banner{padding:6px 9px}.traffic-auth-banner-title{gap:8px}.traffic-auth-banner-title strong{font-size:11px}.traffic-auth-actions{gap:6px}.traffic-auth-banner small{line-height:1.5}}
+
+.traffic-service{color:#e6edf3;font-size:13px}.traffic-service button{border:0;background:transparent;padding:0;min-height:0}.traffic-service [class*="absolute"] button{display:block;width:100%;padding:6px 10px;text-align:left}

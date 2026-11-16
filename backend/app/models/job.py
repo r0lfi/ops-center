@@ -8,6 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 JOB_STATUSES = ("queued", "running", "successful", "failed", "cancelled")
+# Patch reports are built from these jobs' events, so those events are the
+# patch history and are kept when other job events expire.
+PATCH_PLAYBOOKS = ("patch-security.yml", "patch-all.yml", "pihole-update.yml")
 
 # The only playbooks the API will ever submit - never an arbitrary path from
 # the browser. Keep in sync with ansible/playbooks/.

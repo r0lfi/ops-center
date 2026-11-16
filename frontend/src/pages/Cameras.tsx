@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Camera as CameraIcon, Maximize2, MonitorPlay, X } from "lucide-react";
+import { Maximize2, MonitorPlay, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, getToken, type CameraStatus } from "@/lib/api";
@@ -10,7 +11,7 @@ export function cameraStreamUrl(name: string): string {
   // MJPEG multipart response - a plain <img> renders each frame as it
   // arrives, no player library needed. Token has to ride along as a query
   // param since an <img> can't send a header (same pattern as
-  // lib/opsFloorEvents.ts's EventSource stream).
+  // lib/opsFloor/useOpsFloorData.ts's EventSource stream).
   return `/api/cameras/${name}/stream.mjpeg?token=${encodeURIComponent(getToken() ?? "")}`;
 }
 
@@ -132,26 +133,15 @@ export default function Cameras() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <CameraIcon className="h-5 w-5" />
-            Cameras
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Live reachability + the background watchdog's state for the 4 Tapo cameras (RTSP probe
+      <PageHeader title="Cameras" description={<>Live reachability + the background watchdog's state for the 4 Tapo cameras (RTSP probe
             every 60s, auto-kick off WiFi via UniFi after {FAILURE_THRESHOLD} consecutive failures),
-            plus the Ring doorbell's live view. Click a camera's image to enlarge it.
-          </p>
-        </div>
-        <Link
+            plus the Ring doorbell's live view. Click a camera's image to enlarge it.</>} actions={<><Link
           to="/cameras/wallboard"
           className="flex shrink-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <MonitorPlay className="h-4 w-4" />
           Fullscreen wallboard
-        </Link>
-      </div>
+        </Link></>} />
 
       {!cameras && <p className="text-sm text-status-warning">Camera status is unavailable right now.</p>}
 

@@ -26,15 +26,10 @@
 
     - name: "Docker events since: {{ since }}"
       ansible.builtin.command:
-        argv:
-          - docker
-          - events
-          - "--since"
-          - "{{ since }}"
-          - "--until"
-          - "{{ now_epoch.stdout }}"
-          - "--format"
-          - "{{ docker_json_format }}"
+        argv: >-
+          {{ ['docker', 'events', '--since', since, '--until',
+          (until | default(now_epoch.stdout, true)), '--format', docker_json_format]
+          + (['--filter', 'container=' + container_id] if (container_id | default('')) else []) }}
       register: result
       changed_when: false
       failed_when: false
@@ -44,4 +39,4 @@
         event_lines: "{{ (result.stdout_lines | default([])) | map('from_json') | list }}"
       ansible.builtin.debug:
         msg: >-
-          OPS_CENTER_QUERY_RESULT:{{ {'events': (event_lines if result.rc == 0 else [])} | to_json }}
+          OPS_CENTER_QUERY_RESULT:{{ {'ok': (result.rc == 0), 'events': (event_lines if result.rc == 0 else [])} | to_json }}

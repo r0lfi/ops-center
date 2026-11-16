@@ -3,6 +3,7 @@ import { ShieldCheck, X } from "lucide-react";
 
 import { cameraStreamUrl } from "@/pages/Cameras";
 import { api, type CameraStatus } from "@/lib/api";
+import { formatTime } from "@/lib/format";
 
 const POLL_MS = 10000;
 
@@ -53,7 +54,7 @@ export default function CameraWallboard() {
             live
           </span>
         </div>
-        <span className="font-mono text-lg tabular-nums text-white/70">{now.toLocaleTimeString()}</span>
+        <span className="font-mono text-lg tabular-nums text-white/70">{formatTime(now)}</span>
       </div>
 
       {streamable.length === 0 && (

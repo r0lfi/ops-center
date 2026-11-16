@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { JobOutput } from "@/components/jobs/JobOutput";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,26 +27,17 @@ export default function JobDetail() {
 
   return (
     <div className="space-y-4">
-      <Link to="/jobs" className="text-sm text-muted-foreground hover:text-foreground">
-        &larr; Jobs
-      </Link>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{job.playbook}</h1>
-          <p className="text-sm text-muted-foreground">{job.target_description}</p>
-        </div>
-        {(job.status === "queued" || job.status === "running") && (
+      <PageHeader title={job.playbook} description={job.target_description} back={{ to: "/jobs", label: "Jobs" }} actions={(job.status === "queued" || job.status === "running") && (
           <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
-        )}
-      </div>
+        )} />
 
       <Card>
         <CardHeader>
           <CardTitle>Summary</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-4 gap-4 text-sm">
+        <CardContent className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
           <div>
             <p className="text-muted-foreground">Changed</p>
             <p className="text-lg font-semibold">{job.changed_hosts}</p>

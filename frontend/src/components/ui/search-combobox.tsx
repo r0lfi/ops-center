@@ -50,9 +50,11 @@ export function SearchCombobox({
 
   if (selected && !open) {
     return (
-      <div className="flex w-64 items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm">
+      <div className="flex w-full max-w-64 items-center gap-1.5 sm:w-64 rounded-md border border-border bg-card px-3 py-2 text-sm">
         <span className="flex-1 truncate font-medium">{selected.label}</span>
         <button
+          type="button"
+          aria-label={`Clear ${selected.label}`}
           onClick={() => {
             onSelect(null);
             setQuery("");
@@ -66,7 +68,7 @@ export function SearchCombobox({
   }
 
   return (
-    <div ref={containerRef} className="relative w-64">
+    <div ref={containerRef} className="relative w-full max-w-64 sm:w-64">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
       <Input
         value={query}
@@ -86,7 +88,7 @@ export function SearchCombobox({
                 setOpen(false);
               }}
               className={cn(
-                "flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-accent",
+                "flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent",
                 item.id === selectedId && "bg-accent",
               )}
             >

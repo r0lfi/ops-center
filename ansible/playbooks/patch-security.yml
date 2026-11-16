@@ -8,6 +8,15 @@
   serial: "{{ batch_size | default(1) }}"
 
   tasks:
+    - name: Record installed packages before patching
+      ansible.builtin.package_facts:
+        manager: auto
+      failed_when: false
+
+    - name: Remember packages before patching
+      ansible.builtin.set_fact:
+        ops_packages_before: "{{ ansible_facts.packages | default({}) }}"
+
     - name: RHEL family - install security updates
       when: ansible_os_family == "RedHat"
       ansible.builtin.dnf:
@@ -33,3 +42,12 @@
     - name: Report outcome
       ansible.builtin.debug:
         msg: "{{ rhel_result.results | default(debian_result.stdout_lines) | default('no changes') }}"
+
+    # Reporting only: never changes the host and never fails the patch run.
+    - name: Record installed packages after patching
+      ansible.builtin.package_facts:
+        manager: auto
+      failed_when: false
+
+    - name: Report package changes
+      ansible.builtin.include_tasks: tasks/report-package-changes.yml

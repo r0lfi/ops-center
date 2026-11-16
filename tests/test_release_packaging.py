@@ -51,11 +51,11 @@ def test_generated_ha_data_and_external_screenshots_are_rejected():
 
 def test_reviewed_artwork_is_pinned_to_exact_path_and_bytes():
     checker = module('check-release')
-    name = 'docs/images/ops-floor.gif'
+    name = 'docs/images/features/ops-floor-3d.png'
     data = (ROOT / name).read_bytes()
     assert not checker.check_file(name, data)
     assert checker.check_file(name, data + b'changed')
-    assert checker.check_file('docs/images/other.gif', data)
+    assert checker.check_file('docs/images/other.png', data)
 
 
 def test_pwa_icons_are_reviewed_and_exactly_pinned():

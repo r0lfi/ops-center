@@ -67,7 +67,7 @@ function ContainersTab({ hostname, name }: { hostname: string; name: string }) {
 
   return (
     <div className="overflow-x-auto rounded-md border border-border">
-      <table className="w-full text-sm">
+      <table className="ops-card-table w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
             <th className="px-4 py-3 font-medium">Name</th>
@@ -86,16 +86,16 @@ function ContainersTab({ hostname, name }: { hostname: string; name: string }) {
           )}
           {containers.map((c) => (
             <tr key={c.id} className="border-b border-border last:border-0 hover:bg-accent/50">
-              <td className="px-4 py-3 font-medium">
+              <td data-label="Name" className="px-4 py-3 font-medium">
                 <Link to={`/containers/${encodeURIComponent(hostname)}/${encodeURIComponent(c.name)}`} className="hover:underline">
                   {c.name}
                 </Link>
               </td>
-              <td className="max-w-xs truncate px-4 py-3 font-mono text-xs">{c.image}</td>
-              <td className="px-4 py-3">
+              <td data-label="Image" className="max-w-xs truncate px-4 py-3 font-mono text-xs">{c.image}</td>
+              <td data-label="Status" className="px-4 py-3">
                 <Badge variant={STATUS_VARIANT[c.status] ?? "unknown"}>{c.status}</Badge>
               </td>
-              <td className="px-4 py-3">{c.health ?? "-"}</td>
+              <td data-label="Health" className="px-4 py-3">{c.health ?? "-"}</td>
             </tr>
           ))}
         </tbody>

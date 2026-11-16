@@ -1,0 +1,5 @@
+# Build environment for opstui (see install.sh). Same AlmaLinux release and
+# AppStream Rust as ai_traffic_collector, so no toolchain on the host.
+FROM docker.io/library/almalinux:10.2
+RUN dnf -y install rust cargo clippy rustfmt gcc && dnf clean all
+WORKDIR /src

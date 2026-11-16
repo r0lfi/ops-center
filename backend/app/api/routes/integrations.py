@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
-from app.core.talk_memory import bound_user_id
+from app.core.talk_memory import bound_user_id, routed_agent_slug
 from app.core.action_policy import ActionDenied
 from app.models.user import User
 from app.db.session import get_db
@@ -130,11 +130,18 @@ async def talk_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if existing is not None:
         return {"task_id": str(existing.id), "duplicate": True}
     # Route arbitrary registered environments through the coordinator; a
-    # deployment-specific hostname prefix must never select an agent.
-    slug = "coordinator"
+    # deployment-specific hostname prefix must never select an agent. Only an
+    # explicit TALK_AGENT_ROUTES entry for a bound sender's private room picks
+    # another agent (e.g. nova).
+    routed = routed_agent_slug(token, owner_id)
+    slug = routed or "coordinator"
     agent = (
         await db.execute(select(AIAgent).where(AIAgent.slug == slug))
     ).scalar_one_or_none()
+    if routed and (agent is None or not agent.enabled or agent.runtime != "native" or agent.provider_id is None):
+        # Never hand a private room's message to the coordinator instead.
+        await _reply(token, f"{agent.name if agent else routed} er ikke tilgjengelig nå. Ingen oppgave er startet.")
+        return {"ignored": "routed agent unavailable"}
     if agent is None or not agent.enabled:
         raise HTTPException(503, "Coordinator is not available")
     task = AITask(

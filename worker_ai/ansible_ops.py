@@ -22,7 +22,7 @@ from worker_ai.db import SessionLocal
 POLL_TIMEOUT_SECONDS = 45
 
 
-def run_ansible_query(hostname: str, playbook: str, extra_vars: dict) -> dict:
+def run_ansible_query(hostname: str, playbook: str, extra_vars: dict, timeout: int = POLL_TIMEOUT_SECONDS) -> dict:
     with SessionLocal() as db:
         host = db.execute(select(Host).where(Host.hostname == hostname)).scalar_one_or_none()
         if host is None:
@@ -44,7 +44,7 @@ def run_ansible_query(hostname: str, playbook: str, extra_vars: dict) -> dict:
         )
 
         job_id = job.id
-        for _ in range(POLL_TIMEOUT_SECONDS):
+        for _ in range(timeout):
             time.sleep(1)
             db.refresh(job)
             if job.status in ("successful", "failed", "cancelled"):
@@ -52,7 +52,7 @@ def run_ansible_query(hostname: str, playbook: str, extra_vars: dict) -> dict:
         else:
             return {
                 "available": False,
-                "error": f"{playbook} is still running on {hostname} after {POLL_TIMEOUT_SECONDS}s (job {job_id})",
+                "error": f"{playbook} is still running on {hostname} after {timeout}s (job {job_id})",
             }
 
         if job.status != "successful":

@@ -32,6 +32,9 @@ class MCPClient(Base):
     scopes: Mapped[list] = mapped_column(JSONB, default=list)
     allowed_tools: Mapped[list] = mapped_column(JSONB, default=list)
     allowed_user_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    # Administrator pre-approval for a few low-risk task tools (see
+    # app.mcp.catalog.AUTO_APPROVABLE); every other write stays pending.
+    auto_approve_tools: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { PlaybookEditorSection } from "@/components/automation/PlaybookEditorSection";
 import { JobOutput } from "@/components/jobs/JobOutput";
 import { Badge } from "@/components/ui/badge";
@@ -13,18 +14,29 @@ const PLAYBOOK_LABELS: Record<string, string> = {
   "bootstrap.yml": "Bootstrap host",
   "gather-facts.yml": "Gather facts",
   "install-node-exporter.yml": "Install node_exporter",
-  "install-alloy.yml": "Install Grafana Alloy (requires Loki - Phase 9)",
-  "patch-check.yml": "Patch check",
+  "install-alloy.yml": "Install Grafana Alloy",
+  "patch-check.yml": "Check for patches",
   "patch-security.yml": "Install security patches",
   "patch-all.yml": "Install all patches",
-  "reboot-check.yml": "Reboot check",
+  "reboot-check.yml": "Check if a reboot is needed",
   "reboot.yml": "Reboot",
   "vulnerability-scan.yml": "Collect package inventory",
-  "service-check.yml": "Service check",
-  "health-check.yml": "Health check",
+  "service-check.yml": "Check services",
+  "health-check.yml": "Check health",
 };
 
-const DANGEROUS_PLAYBOOKS = new Set(["patch-security.yml", "patch-all.yml", "reboot.yml"]);
+interface PlaybookCategory { title: string; description: string; changes: boolean; playbooks: string[] }
+
+const CATEGORIES: PlaybookCategory[] = [
+  { title: "Checks", description: "Read the state of a host. No packages or services change.", changes: false, playbooks: ["health-check.yml", "service-check.yml", "gather-facts.yml", "patch-check.yml", "reboot-check.yml", "vulnerability-scan.yml"] },
+  { title: "Patching", description: "Install updates on the host.", changes: true, playbooks: ["patch-security.yml", "patch-all.yml"] },
+  { title: "Setup", description: "Install or configure software on the host.", changes: true, playbooks: ["bootstrap.yml", "install-node-exporter.yml", "install-alloy.yml"] },
+  { title: "Power", description: "Takes the host down for a moment.", changes: true, playbooks: ["reboot.yml"] },
+];
+
+const known = new Set(CATEGORIES.flatMap((category) => category.playbooks));
+const label = (playbook: string) => PLAYBOOK_LABELS[playbook] ?? playbook;
+const changesHosts = (playbook: string) => !CATEGORIES.some((category) => !category.changes && category.playbooks.includes(playbook));
 
 export default function Automation() {
   const [playbooks, setPlaybooks] = useState<string[]>([]);
@@ -69,30 +81,33 @@ export default function Automation() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-semibold">Automation</h1><Button asChild variant="outline"><Link to="/automation/playbooks">Playbook Library</Link></Button></div>
+      <PageHeader title="Run actions" description="Start an Ansible playbook against your servers." actions={<><Button asChild variant="outline"><Link to="/automation/playbooks">Playbook Library</Link></Button></>} />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {playbooks.map((pb) => (
-          <Card key={pb}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                {PLAYBOOK_LABELS[pb] ?? pb}
-                {DANGEROUS_PLAYBOOKS.has(pb) && <Badge variant="warning">confirm</Badge>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button size="sm" variant="outline" onClick={() => openRunDialog(pb)}>
-                Run
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {[
+        ...CATEGORIES.map((category) => ({ ...category, playbooks: category.playbooks.filter((name) => playbooks.includes(name)) })),
+        { title: "Custom playbooks", description: "Added here. Ops Center cannot tell what they do, so treat them as changes.", changes: true, playbooks: playbooks.filter((name) => !known.has(name)) },
+      ].filter((category) => category.playbooks.length > 0).map((category) => (
+        <section key={category.title} aria-label={category.title} className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold">{category.title}</h2>
+            <Badge variant={category.changes ? "warning" : "ok"}>{category.changes ? "changes hosts" : "read only"}</Badge>
+            <p className="basis-full text-xs text-muted-foreground sm:basis-auto">{category.description}</p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {category.playbooks.map((pb) => (
+              <Card key={pb}>
+                <CardHeader><CardTitle className="break-words">{label(pb)}</CardTitle></CardHeader>
+                <CardContent><Button size="sm" variant="outline" onClick={() => openRunDialog(pb)}>Run</Button></CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ))}
 
       {confirming && selectedPlaybook && (
         <Card>
           <CardHeader>
-            <CardTitle>Run {PLAYBOOK_LABELS[selectedPlaybook] ?? selectedPlaybook}</CardTitle>
+            <CardTitle>Run {label(selectedPlaybook)}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
@@ -122,7 +137,7 @@ export default function Automation() {
                     ))}
               </Select>
             </div>
-            {DANGEROUS_PLAYBOOKS.has(selectedPlaybook) && (
+            {changesHosts(selectedPlaybook) && (
               <p className="text-sm text-status-warning">
                 This action will modify the target host(s). Confirm before proceeding.
               </p>

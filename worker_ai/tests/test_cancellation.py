@@ -31,7 +31,7 @@ def test_stop_unwinds_agent_without_starting_provider():
         with pytest.raises(TaskCancelled):
             run_agent(db, agent, "test", task_id="task-id")
         inner.assert_not_called()
-        state.assert_called_once_with(db, agent, "idle", "Stopped by user", None, "task-id")
+        state.assert_called_once_with(db, agent, "idle", "Stopped by user", None, "task-id", event="stopped")
 
 
 @pytest.mark.parametrize("status", ["cancelled", "completed", "running"])

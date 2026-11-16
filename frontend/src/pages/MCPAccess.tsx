@@ -3,17 +3,19 @@ import { apiGet, apiSend } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatDateTime } from "@/lib/format";
+import { McpAgentAccess } from "@/components/ai/McpAgentAccess";
 
 type Tool = { name: string; description: string; scope: string; minimum_role: string; method: string };
-type Settings = { enabled: boolean; revision: number; public_url: string | null; tools: Tool[]; scopes: string[] };
-type Client = { id: string; name: string; enabled: boolean; redirect_uris: string[]; allowed_tools: string[]; allowed_user_ids: string[]; scopes: string[] };
+type Settings = { enabled: boolean; revision: number; public_url: string | null; tools: Tool[]; scopes: string[]; auto_approvable?: string[] };
+type Client = { id: string; name: string; enabled: boolean; redirect_uris: string[]; allowed_tools: string[]; allowed_user_ids: string[]; scopes: string[]; auto_approve_tools?: string[] };
 type Grant = { id: string; client_id: string; user_id: string; agent_id: string | null; allowed_tools: string[]; expires_at: string; revoked_at: string | null };
 type Approval = { request_id: string; tool: string; status: string; argument_digest: string; arguments: unknown; result: unknown; expires_at: string };
 type User = { id: string; username: string; role: string; is_active: boolean };
 type Agent = { id: string; name: string; allowed_tools: string[]; enabled: boolean };
 type Audit = { id: string; created_at: string; operation: string; outcome: string; user_id: string | null; client_id: string | null };
 const panel = "rounded-xl border border-border bg-card p-5 space-y-4";
-const blank = { id: "", name: "", enabled: true, redirect_uris: [], allowed_tools: [], allowed_user_ids: [], scopes: [] } as Client;
+const blank = { id: "", name: "", enabled: true, redirect_uris: [], allowed_tools: [], allowed_user_ids: [], scopes: [], auto_approve_tools: [] } as Client;
 function toggle(values: string[], value: string) { return values.includes(value) ? values.filter(v => v !== value) : [...values, value]; }
 
 export function ToolPicker({ tools, selected, onChange }: { tools: Tool[]; selected: string[]; onChange: (v: string[]) => void }) {
@@ -68,7 +70,8 @@ export default function MCPAccess() {
   async function saveClient() {
     const scopes = ["ops:connect", ...new Set((settings?.tools ?? []).filter(t => draft.allowed_tools.includes(t.name)).map(t => t.scope))];
     const body = { name: draft.name, enabled: draft.enabled, redirect_uris: redirects.split("\n").map(v => v.trim()).filter(Boolean),
-      allowed_tools: draft.allowed_tools, allowed_user_ids: draft.allowed_user_ids, scopes };
+      allowed_tools: draft.allowed_tools, allowed_user_ids: draft.allowed_user_ids, scopes,
+      auto_approve_tools: (draft.auto_approve_tools ?? []).filter(t => draft.allowed_tools.includes(t)) };
     const result = await apiSend<Client>("/api/mcp/clients" + (draft.id ? "/" + draft.id : ""), draft.id ? "PUT" : "POST", body);
     setDraft(result); setRedirects(result.redirect_uris.join("\n"));
   }
@@ -79,10 +82,11 @@ export default function MCPAccess() {
     await apiSend("/api/mcp/agent-grants", "POST", { agent_id: agent.id, user_id: ownerId, allowed_tools: agentTools, days });
   }
   return <div className="mx-auto max-w-6xl space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold">MCP access</h1>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">MCP access</h2>
       <p className="text-muted-foreground">Connect external clients and Ops Floor agents to controlled operational tools.</p></div>
       <Button variant="outline" disabled={busy} onClick={() => void run(load, "Refreshed.")}>Refresh</Button></div>
     {message && <p role="status" className="rounded border p-3 text-sm">{message}</p>}
+    <section className={panel}><h2 className="text-lg font-semibold">Agent access overview</h2><McpAgentAccess admin={admin} /></section>
     {admin && settings && <>
       <section className={panel}><h2 className="text-lg font-semibold">Service</h2>
         <p>Status: <strong>{settings.enabled ? "Enabled" : "Disabled"}</strong></p>
@@ -105,6 +109,11 @@ export default function MCPAccess() {
           <label key={u.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.allowed_user_ids.includes(u.id)}
             onChange={() => setDraft({ ...draft, allowed_user_ids: toggle(draft.allowed_user_ids, u.id) })} />{u.username} ({u.role})</label>)}</div></fieldset>
         <ToolPicker tools={settings.tools} selected={draft.allowed_tools} onChange={allowed_tools => setDraft({ ...draft, allowed_tools })} />
+        {(settings.auto_approvable ?? []).some(t => draft.allowed_tools.includes(t)) && <fieldset><legend className="mb-1 text-sm font-medium">Pre-approved AI task tools</legend>
+          <p className="mb-2 text-sm text-muted-foreground">These run without a separate decision for this client only. The agent work they start still needs your approval for every change.</p>
+          <div className="flex flex-wrap gap-4">{(settings.auto_approvable ?? []).filter(t => draft.allowed_tools.includes(t)).map(t =>
+            <label key={t} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={(draft.auto_approve_tools ?? []).includes(t)}
+              onChange={() => setDraft({ ...draft, auto_approve_tools: toggle(draft.auto_approve_tools ?? [], t) })} /><code>{t}</code></label>)}</div></fieldset>}
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.enabled} onChange={e => setDraft({ ...draft, enabled: e.target.checked })} />Client enabled</label>
         {draft.id && <p className="break-all text-sm">Scopes: <code>{draft.scopes.join(" ")}</code></p>}
         <Button disabled={busy} onClick={() => void run(saveClient, "Client saved. Existing grants cannot gain new permissions without new consent.")}>Save client</Button>
@@ -127,14 +136,15 @@ export default function MCPAccess() {
       {!grants.length && <p className="text-sm text-muted-foreground">No authorizations.</p>}
       {grants.map(g => <div key={g.id} className="flex flex-wrap justify-between gap-3 border-t pt-3 text-sm"><div>
         <p>{g.agent_id ? "Ops Floor agent" : "External client"} · <code>{g.client_id}</code></p>
-        <p>{g.allowed_tools.length} tools · Expires {new Date(g.expires_at).toLocaleString()} · {g.revoked_at ? "Revoked" : "Authorized"}</p>
+        <p>{g.allowed_tools.length} tools · {g.revoked_at ? "Revoked" : new Date(g.expires_at).getTime() <= Date.now()
+          ? <strong className="text-status-critical">Expired {formatDateTime(g.expires_at)}</strong> : <>Authorized until {formatDateTime(g.expires_at)}</>}</p>
       </div><Button variant="outline" disabled={busy || Boolean(g.revoked_at)} onClick={() => void run(() => apiSend("/api/mcp/grants/" + g.id, "DELETE"), "Access revoked.")}>Revoke</Button></div>)}
     </section>
     <section className={panel}><h2 className="text-lg font-semibold">Change requests</h2>
       <p className="text-sm text-muted-foreground">Review the exact target and arguments. Approval executes once with the original user's current permissions. An unknown outcome requires inspection before retrying.</p>
       {!requests.length && <p className="text-sm text-muted-foreground">No change requests.</p>}
       {requests.map(r => <article key={r.request_id} className="space-y-3 rounded border p-4">
-        <p className="font-medium">{r.tool} · {r.status}</p><p className="break-all text-xs text-muted-foreground">{r.request_id} · Expires {new Date(r.expires_at).toLocaleString()}</p>
+        <p className="font-medium">{r.tool} · {r.status}</p><p className="break-all text-xs text-muted-foreground">{r.request_id} · Expires {formatDateTime(r.expires_at)}</p>
         {r.arguments != null && <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-3 text-xs">{JSON.stringify(r.arguments, null, 2)}</pre>}
         {r.result != null && <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(r.result, null, 2)}</pre>}
         {r.status === "pending" && r.arguments != null && <div className="flex gap-2">
@@ -147,7 +157,7 @@ export default function MCPAccess() {
     </section>
     {admin && <section className={panel}><h2 className="text-lg font-semibold">Recent MCP audit</h2>
       <p className="text-sm text-muted-foreground">Metadata only. Tokens, arguments and operational results are not included.</p>
-      <div className="max-h-80 overflow-auto">{audit.map(a => <div key={a.id} className="border-t py-2 text-sm">{new Date(a.created_at).toLocaleString()} · {a.operation} · {a.outcome}</div>)}</div>
+      <div className="max-h-80 overflow-auto">{audit.map(a => <div key={a.id} className="border-t py-2 text-sm">{formatDateTime(a.created_at)} · {a.operation} · {a.outcome}</div>)}</div>
     </section>}
   </div>;
 }

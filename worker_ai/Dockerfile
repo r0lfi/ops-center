@@ -36,6 +36,16 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 COPY backend/app/models ./app/models
 COPY backend/app/db ./app/db
 COPY backend/app/core ./app/core
+COPY backend/app/services/ai_budget.py ./app/services/ai_budget.py
+# Memory rules shared with the API (suggestions, nova imports); each module the
+# worker imports from app.services must be listed (tests/test_worker_image.py).
+COPY backend/app/services/__init__.py ./app/services/__init__.py
+COPY backend/app/services/memory_suggestions.py ./app/services/memory_suggestions.py
+COPY backend/app/services/claude_memory_import.py ./app/services/claude_memory_import.py
+COPY backend/app/services/nova_import.py ./app/services/nova_import.py
+COPY backend/app/services/memory_store.py ./app/services/memory_store.py
+COPY backend/app/services/memory_organize.py ./app/services/memory_organize.py
+COPY backend/app/services/nova_sources.py ./app/services/nova_sources.py
 COPY backend/app/schemas/ai_collaboration.py ./app/schemas/ai_collaboration.py
 RUN touch app/__init__.py
 

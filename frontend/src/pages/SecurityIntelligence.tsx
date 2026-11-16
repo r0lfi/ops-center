@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { AdvisoryDetailDialog } from "@/components/security/AdvisoryDetailDialog";
 import { VulnerabilityDetailDialog } from "@/components/security/VulnerabilityDetailDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type SecurityAdvisory, type SecuritySummary, type Vulnerability } from "@/lib/api";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const PRIORITY_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = {
   emergency: "critical",
@@ -30,7 +32,7 @@ function SourceStatusRow({ name, status, lastSuccess, error }: { name: string; s
         {SOURCE_LABELS[name] ?? name}
       </div>
       <span className="text-xs text-muted-foreground">
-        {lastSuccess ? `updated ${new Date(lastSuccess).toLocaleString()}` : "never updated"}
+        {lastSuccess ? `updated ${formatDateTime(lastSuccess)}` : "never updated"}
         {error && ` - ${error.slice(0, 80)}`}
       </span>
     </div>
@@ -39,7 +41,8 @@ function SourceStatusRow({ name, status, lastSuccess, error }: { name: string; s
 
 export default function SecurityIntelligence() {
   const [summary, setSummary] = useState<SecuritySummary | null>(null);
-  const [attention, setAttention] = useState<Vulnerability[]>([]);
+  const [attention, setAttention] = useState<Vulnerability[] | null>(null);
+  const [attentionError, setAttentionError] = useState(false);
   const [advisories, setAdvisories] = useState<SecurityAdvisory[]>([]);
   const [selected, setSelected] = useState<Vulnerability | null>(null);
   const [selectedAdvisory, setSelectedAdvisory] = useState<SecurityAdvisory | null>(null);
@@ -48,7 +51,9 @@ export default function SecurityIntelligence() {
   useEffect(() => {
     function refresh() {
       api.security.summary().then(setSummary).catch(() => {});
-      api.security.attention(15).then(setAttention).catch(() => {});
+      api.security.attention(15)
+        .then((rows) => { setAttention(rows); setAttentionError(false); })
+        .catch(() => setAttentionError(true));
       api.security.advisories({ affectedOnly: !showAllAdvisories }).then(setAdvisories).catch(() => {});
     }
     refresh();
@@ -58,7 +63,7 @@ export default function SecurityIntelligence() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Security Intelligence</h1>
+      <PageHeader title="Security Intelligence" />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card>
@@ -124,7 +129,7 @@ export default function SecurityIntelligence() {
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Priority</th>
@@ -137,28 +142,42 @@ export default function SecurityIntelligence() {
                 </tr>
               </thead>
               <tbody>
-                {attention.length === 0 && (
+                {attentionError && (
+                  <tr>
+                    <td colSpan={7} role="alert" className="px-4 py-3 text-center text-status-warning">
+                      Could not load this list.{attention ? " Showing the last known values." : " It is not known whether anything needs attention."}
+                    </td>
+                  </tr>
+                )}
+                {!attention && !attentionError && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      Checking vulnerabilities…
+                    </td>
+                  </tr>
+                )}
+                {attention?.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                       Nothing needs attention right now.
                     </td>
                   </tr>
                 )}
-                {attention.map((v) => (
+                {attention?.map((v) => (
                   <tr
                     key={v.id}
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/50"
                     onClick={() => setSelected(v)}
                   >
-                    <td className="px-4 py-3">
+                    <td data-label="Priority" className="px-4 py-3">
                       <Badge variant={PRIORITY_VARIANT[v.priority_level] ?? "unknown"}>{v.priority_level}</Badge>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-primary hover:underline">{v.cve_id}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{v.package_name}</td>
-                    <td className="px-4 py-3">{v.cisa_kev && <Badge variant="critical">KEV</Badge>}</td>
-                    <td className="px-4 py-3">{v.epss_score !== null ? v.epss_score.toFixed(3) : "-"}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{v.fixed_version ?? "-"}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                    <td data-label="CVE" className="px-4 py-3 font-mono text-xs text-primary hover:underline">{v.cve_id}</td>
+                    <td data-label="Package" className="px-4 py-3 font-mono text-xs">{v.package_name}</td>
+                    <td data-label="KEV" className="px-4 py-3">{v.cisa_kev && <Badge variant="critical">KEV</Badge>}</td>
+                    <td data-label="EPSS" className="px-4 py-3">{v.epss_score !== null ? v.epss_score.toFixed(3) : "-"}</td>
+                    <td data-label="Fixed version" className="px-4 py-3 font-mono text-xs">{v.fixed_version ?? "-"}</td>
+                    <td data-label="Affected" className="px-4 py-3 text-xs text-muted-foreground">
                       {[...v.affected_hosts.map((h) => h.hostname), ...v.affected_containers.map((c) => c.name)].join(
                         ", ",
                       )}
@@ -189,7 +208,7 @@ export default function SecurityIntelligence() {
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Date</th>
@@ -216,16 +235,16 @@ export default function SecurityIntelligence() {
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/50"
                     onClick={() => setSelectedAdvisory(a)}
                   >
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {a.published_at ? new Date(a.published_at).toLocaleDateString() : "-"}
+                    <td data-label="Date" className="px-4 py-3 text-muted-foreground">
+                      {a.published_at ? formatDate(a.published_at) : "-"}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-primary hover:underline">{a.advisory_id}</td>
-                    <td className="px-4 py-3">
+                    <td data-label="Advisory" className="px-4 py-3 font-mono text-xs text-primary hover:underline">{a.advisory_id}</td>
+                    <td data-label="Severity" className="px-4 py-3">
                       <Badge variant={PRIORITY_VARIANT[a.severity] ?? "unknown"}>{a.severity}</Badge>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs">{a.cve_ids.slice(0, 3).join(", ")}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{a.packages.slice(0, 2).join(", ")}</td>
-                    <td className="px-4 py-3">
+                    <td data-label="CVEs" className="px-4 py-3 font-mono text-xs">{a.cve_ids.slice(0, 3).join(", ")}</td>
+                    <td data-label="Package" className="px-4 py-3 font-mono text-xs">{a.packages.slice(0, 2).join(", ")}</td>
+                    <td data-label="Affected hosts" className="px-4 py-3">
                       {a.affected_hosts.length > 0 ? (
                         <Badge variant="warning">{a.affected_hosts.length}</Badge>
                       ) : (

@@ -21,7 +21,11 @@ Vite's `vite-plugin-pwa` builds a custom Workbox service worker (`src/sw.ts`). I
 precaches versioned JS/CSS and public offline/icon assets. It never caches API,
 authentication, session data, POST requests or live status. Navigations use the
 network; offline navigation shows an explicit offline page. Backend unavailability
-shows an offline overlay so old on-screen values are not presented as live.
+shows an overlay so old on-screen values are not presented as live. The overlay
+appears only when two health checks a few seconds apart agree, so a phone waking
+up or a short failover does not trigger it. Failures seen while the page is hidden
+are ignored. It names what is failing, keeps retrying and removes itself when the
+backend returns, without losing what is on the page.
 
 A new worker waits until the user chooses **Reload**. The UI does not activate a
 new worker in the middle of an active session. Keep the prior deployment's hashed

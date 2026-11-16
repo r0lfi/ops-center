@@ -14,9 +14,10 @@ RUN groupadd --gid 1000 opsworker && \
 WORKDIR /app
 
 COPY worker/requirements.txt ./worker-requirements.txt
+COPY worker/constraints.txt ./worker-constraints.txt
 RUN python3 -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools && \
-    /opt/venv/bin/pip install --no-cache-dir -r worker-requirements.txt && \
+    /opt/venv/bin/pip install --no-cache-dir -r worker-requirements.txt -c worker-constraints.txt && \
     /opt/venv/bin/pip uninstall -y pip setuptools wheel
 
 ENV PATH="/opt/venv/bin:${PATH}" \
@@ -33,7 +34,8 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 COPY backend/app/models ./app/models
 COPY backend/app/db ./app/db
 COPY backend/app/core ./app/core
-RUN touch app/__init__.py
+COPY backend/app/services/container_inventory.py ./app/services/container_inventory.py
+RUN touch app/__init__.py app/services/__init__.py
 
 COPY ansible ./ansible
 COPY worker/*.py ./worker/

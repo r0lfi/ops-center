@@ -1,0 +1,31 @@
+[package]
+name = "opstui"
+version = "0.1.0"
+edition = "2021"
+description = "Ops-Center terminal operator interface (agents, tasks, approvals, live activity)"
+publish = false
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+crossterm = { version = "0.28", features = ["event-stream"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+ratatui = "0.29"
+reqwest = { version = "0.12", default-features = false, features = ["json", "cookies", "stream", "rustls-tls-native-roots"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "process", "io-util"] }
+toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+# The mock backend in tests/backend.rs.
+tokio = { version = "1", features = ["net", "io-util"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

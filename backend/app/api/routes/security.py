@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -26,6 +26,11 @@ from app.services.celery_client import get_celery_client
 from app.services.priority import compute_priority
 
 router = APIRouter()
+
+
+def escape_like(term: str) -> str:
+    """Makes user text match literally inside a LIKE pattern."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _to_read(
@@ -218,6 +223,8 @@ async def list_vulnerabilities(
     affected_only: bool = True,
     host_id: uuid.UUID | None = None,
     container_name: str | None = None,
+    search: str | None = Query(None, max_length=64),
+    limit: int = Query(1000, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
 ) -> list[VulnerabilityRead]:
     query = select(Vulnerability).options(
@@ -244,8 +251,10 @@ async def list_vulnerabilities(
         query = query.where(
             Vulnerability.container_links.any(ContainerVulnerability.container_name == container_name)
         )
+    if search:
+        query = query.where(Vulnerability.cve_id.ilike(f"%{escape_like(search)}%", escape="\\"))
 
-    result = await db.execute(query.order_by(Vulnerability.last_seen.desc()).limit(1000))
+    result = await db.execute(query.order_by(Vulnerability.last_seen.desc()).limit(limit))
     vulns = result.scalars().unique().all()
     host_criticality = await _host_criticality_map(db)
     container_lookup = await _container_lookup_map(db)

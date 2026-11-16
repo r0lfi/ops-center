@@ -1,7 +1,6 @@
 """Evidence-based traffic signals. Never blocks clients or asserts a compromise."""
 
 import asyncio
-import hashlib
 import logging
 import time
 from collections import defaultdict
@@ -287,86 +286,8 @@ async def scan_once(now=None):
 
 
 async def notify_pending():
-    """Durable pending alerts; HA lock + existing Talk deduplication. Authentication alerts bypass the aggregate one-minute digest delay."""
-    from app.models.user import User
-    from app.services.talk_watch import notify_once
-
-    if not get_settings().talk_notifications_enabled:
-        return
-    config = await load_config()
-    source_ids = [s.id for s in enabled_sources(config)]
-    if not source_ids:
-        return
-    now = time.time()
-    async with async_session_factory() as db, db.begin():
-        if not await db.scalar(text("SELECT pg_try_advisory_xact_lock(738105)")):
-            return
-        state = await db.get(C, "security")
-        if not state:
-            return
-        admins = set(
-            (
-                await db.execute(
-                    select(User.id).where(
-                        User.is_active.is_(True), User.role == "admin"
-                    )
-                )
-            ).scalars()
-        )
-        rooms = {
-            b.room_token
-            for b in get_settings().talk_memory_bindings
-            if b.user_id in admins
-        }
-        if not rooms:
-            return
-        notification_filters = [
-            A.source.in_(source_ids),
-            A.rule != "ssh_attempt",
-            A.notified_at.is_(None),
-            A.reviewed_at.is_(None),
-            A.created_at >= now - 86400,
-        ]
-        if not config.notify_authentication:
-            notification_filters.append(A.rule.not_in(tuple(traffic_auth.TITLES)))
-        if now - state.checkpoint.get("last_notice", 0) < 60:
-            notification_filters.append(A.rule.in_(tuple(traffic_auth.TITLES)))
-        rows = (
-            (
-                await db.execute(
-                    select(A)
-                    .where(*notification_filters)
-                    .order_by((A.severity == "high").desc(), A.created_at)
-                    .limit(20)
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if not rows:
-            return
-        key = hashlib.sha256(",".join(str(a.id) for a in rows).encode()).hexdigest()
-        message = (
-            "Ops Center authentication/security alert:\n"
-            + "\n".join(
-                f"• {a.severity.upper()}: {TITLES[a.rule]} — {a.domain}, IP {a.ip}, country {a.evidence.get('country','Unknown')}, observations {a.count}"
-                for a in rows
-            )
-            + "\nOpen Traffic Map → Security signals for times and evidence. No automatic blocking."
-        )
-        for room in rooms:
-            await notify_once(f"traffic-security:{room}:{key}", room, message)
-        for a in rows:
-            a.notified_at = now
-        state.checkpoint = {
-            **state.checkpoint,
-            "last_notice": (
-                now
-                if now - state.checkpoint.get("last_notice", 0) >= 60
-                else state.checkpoint.get("last_notice", 0)
-            ),
-            "notification_error": None,
-        }
+    """Compatibility entry point. Proactive delivery is owned by incident_watch."""
+    return None
 
 
 async def security_loop():
@@ -382,22 +303,6 @@ async def security_loop():
                     state = await db.get(C, "security")
                     if state:
                         state.last_error = "Security analysis failed; retrying"
-            except Exception:
-                pass
-        try:
-            await notify_pending()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            log.warning("Traffic security Talk delivery failed; retained for retry")
-            try:
-                async with async_session_factory() as db, db.begin():
-                    state = await db.get(C, "security")
-                    if state:
-                        state.checkpoint = {
-                            **state.checkpoint,
-                            "notification_error": "Talk delivery failed; retrying",
-                        }
             except Exception:
                 pass
         await asyncio.sleep(2)

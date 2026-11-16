@@ -26,7 +26,7 @@ export default function AIDocumentation() {
         </p>
         <div className="flex flex-wrap gap-4 text-sm text-primary">
           <Link className="underline underline-offset-4" to="/ai-agents/agents">Agent configuration</Link>
-          <Link className="underline underline-offset-4" to="/ai-agents/settings">Model providers</Link>
+          <Link className="underline underline-offset-4" to="/settings?tab=ai">Model providers</Link>
           <Link className="underline underline-offset-4" to="/ai-agents/approvals">Approvals</Link>
           <Link className="underline underline-offset-4" to="/ai-agents/memory">History and memory</Link>
         </div>
@@ -60,13 +60,13 @@ export default function AIDocumentation() {
                   </li>)}
                 </ol>}
                 {section.rows && <div className="overflow-x-auto rounded-md border border-border">
-                  <table className="w-full text-left text-sm">
+                  <table className="ops-card-table w-full text-left text-sm">
                     <caption className="sr-only">{section.title}</caption>
                     <thead className="bg-secondary"><tr>{section.columns?.map((column) => <th key={column} scope="col" className="px-4 py-2 font-medium">{column}</th>)}</tr></thead>
                     <tbody>{section.rows.map((row) => <tr key={row[0]} className="border-t border-border">
                       {row.map((cell, index) => index === 0
                         ? <th key={index} scope="row" className="px-4 py-3 align-top font-medium">{cell}</th>
-                        : <td key={index} className="min-w-48 px-4 py-3 align-top text-muted-foreground">{cell}</td>)}
+                        : <td key={index} data-label={section.columns?.[index]} className="min-w-48 px-4 py-3 align-top text-muted-foreground">{cell}</td>)}
                     </tr>)}</tbody>
                   </table>
                 </div>}

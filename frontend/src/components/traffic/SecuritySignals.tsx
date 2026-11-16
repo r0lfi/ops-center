@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ShieldAlert, Check, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
 
 export interface SecurityAlert {
   id:number; rule:string; title:string; severity:string; domain:string; ip:string;
@@ -16,7 +17,7 @@ export interface SecurityData {
   alerts:SecurityAlert[]; logins:{ts:number;ip:string;domain:string;country:string|null}[];
 }
 const outcomes:Record<string,string>={login_attempt:"Authentication not completed",login_success:"Login accepted",login_failure:"Login rejected",login_limited:"Rate limited",vpn_handshake:"Authenticated VPN handshake"};
-const date=(ts:number)=>new Date(ts*1000).toLocaleString();
+const date=(ts:number)=>formatDateTime(ts*1000);
 export function SecuritySignals({service,hours}:{service:string;hours:number}) {
   const [data,setData]=useState<SecurityData|null>(null);
   const [error,setError]=useState<string|null>(null);
@@ -62,7 +63,7 @@ export function SecuritySignals({service,hours}:{service:string;hours:number}) {
       {data?.auth_policy&&<p className="traffic-footnote">Allowed origins: {data.auth_policy.countries.join(", ")||"No countries configured"}. Dynamic DNS: {data.auth_policy.dns_names.join(", ")||"Not configured"}{data.auth_policy.addresses.length>0&&" → "+data.auth_policy.addresses.join(", ")}. {data.auth_policy.checked_at&&"Last checked "+date(data.auth_policy.checked_at)+". "}SSH trusts only current DNS addresses, regardless of country. Origin labels use the current policy; location does not identify the user.</p>}
       {data?.auth_policy?.error&&<p role="alert" className="traffic-alert">{data.auth_policy.error}. Unresolved addresses are not exempt from alerts.</p>}
       <label>Result <select aria-label="Authentication result" value={authResult} onChange={e=>{setAuthResult(e.target.value);setAuthOffset(0)}}><option value="all">All observations</option><option value="failed">Rejected / incomplete / rate limited</option><option value="success">Successful logins</option><option value="vpn">VPN handshakes</option></select></label>
-      <div className="traffic-table-scroll"><table aria-label="Authentication log"><thead><tr><th>Observed</th><th>Result</th><th>Client</th><th>Country / origin</th><th>Service</th></tr></thead><tbody>{data?.authentication?.map(e=><tr key={e.id}><td>{date(e.ts)}</td><td>{outcomes[e.outcome]??e.outcome}{e.status!=null&&<span>HTTP {e.status}</span>}</td><td className="traffic-ip">{e.ip}</td><td>{e.country??"Unknown"}<span>{e.origin_reason??"Outside allowed origins"}</span></td><td>{e.domain}</td></tr>)}</tbody></table></div>
+      <div className="traffic-table-scroll"><table className="ops-card-table" aria-label="Authentication log"><thead><tr><th>Observed</th><th>Result</th><th>Client</th><th>Country / origin</th><th>Service</th></tr></thead><tbody>{data?.authentication?.map(e=><tr key={e.id}><td data-label="Observed">{date(e.ts)}</td><td data-label="Result">{outcomes[e.outcome]??e.outcome}{e.status!=null&&<span>HTTP {e.status}</span>}</td><td data-label="Client" className="traffic-ip">{e.ip}</td><td data-label="Country / origin">{e.country??"Unknown"}<span>{e.origin_reason??"Outside allowed origins"}</span></td><td data-label="Service">{e.domain}</td></tr>)}</tbody></table></div>
       {data&&!data.authentication?.length&&<p className="traffic-empty">No classified authentication observations in this selection.</p>}
       <div className="traffic-security-item-bottom"><button disabled={authOffset===0} onClick={()=>setAuthOffset(v=>Math.max(0,v-20))}>Previous log page</button><small>{data?.auth_total?Math.min(authOffset+1,data.auth_total):0}–{Math.min(authOffset+20,data?.auth_total??0)} of {data?.auth_total??0}</small><button disabled={authOffset+20>=(data?.auth_total??0)} onClick={()=>setAuthOffset(v=>v+20)}>Next log page</button></div>
       <p className="traffic-footnote">WireGuard does not provide a failed password-login log for tunnel packets. Handshakes include periodic rekeys, not just new connections. Failed and successful VPN web-admin logins are logged separately.</p>

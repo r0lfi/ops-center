@@ -11,7 +11,7 @@ Each provider's chat() translates this generic history into its own wire
 format and translates the reply back into a ProviderResult; each
 provider's tool_result_messages() builds the generic messages to append
 after tools have actually run. This is what lets an agent switch between
-Anthropic/OpenAI/Ollama by changing one DB row, not code.
+Anthropic/OpenAI/Mistral/Ollama by changing one DB row, not code.
 """
 from dataclasses import dataclass, field
 
@@ -33,11 +33,31 @@ class ProviderResult:
     # (0 when it reports nothing) - recorded per call by runtime.py.
     input_tokens: int = 0
     output_tokens: int = 0
+    usage_reported: bool = False
+    cache_read_tokens: int = 0
+    cache_write_tokens: int | None = 0
+    cache_write_1h_tokens: int | None = 0
+    # Usage remains available even when model content cannot be used safely.
+    error_message: str | None = None
 
 
 class ProviderError(RuntimeError):
     """Raised for any provider-side failure (network, auth, bad response) -
     callers must show 'AI provider unavailable', never guess at a reply."""
+
+
+class ProviderCallNotStarted(ProviderError):
+    """The transport proved that no HTTP request was attempted."""
+
+
+def usage_count(usage: dict, key: str, default: int | None = 0) -> tuple[int | None, bool]:
+    """Keep absent optional metadata distinct from reported counts."""
+    if key not in usage or usage[key] is None:
+        return default, True
+    value = usage[key]
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value, True
+    return default, False
 
 
 class AIProvider:

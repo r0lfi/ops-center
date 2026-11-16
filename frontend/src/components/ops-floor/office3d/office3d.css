@@ -1,0 +1,118 @@
+@font-face { font-family: Silkscreen; font-weight: 400; font-display: swap; src: url("../fonts/silkscreen-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: Silkscreen; font-weight: 700; font-display: swap; src: url("../fonts/silkscreen-latin-700-normal.woff2") format("woff2"); }
+
+.of-stage { position: relative; height: min(72vh, 680px); overflow: hidden; perspective: 3400px; background: #0a0f15; border-radius: 10px; cursor: grab; touch-action: none; user-select: none; }
+.of-stage:active { cursor: grabbing; }
+.of-stage-wrap:fullscreen .of-stage { height: calc(100dvh - 130px); }
+@media (max-width: 760px) { .of-stage { height: 440px; } }
+.of-world { position: absolute; left: 50%; top: 57%; width: 1000px; margin-left: -500px; transform-style: preserve-3d; transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.of-world.of-dragging { transition: none; }
+.of-pass, .of-station, .of-cb { transform-style: preserve-3d; }
+.of-pass, .of-station { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.of-cb { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.of-station { cursor: pointer; }
+.of-f { position: absolute; overflow: hidden; backface-visibility: visible; }
+.of-station[data-dim] .of-f { opacity: 0.25; }
+
+.of-ground { position: absolute; inset: -40px; background-color: #0d131a; background-image: linear-gradient(#1a2330 1px, transparent 1px), linear-gradient(90deg, #1a2330 1px, transparent 1px); background-size: 40px 40px; border: 1px solid #2f3b4a; }
+.of-room3 { position: absolute; transform: translateZ(1px); display: flex; align-items: flex-end; padding: 6px 10px; border: 1px solid #2f3b4a; background-color: #131b25; background-image: linear-gradient(#1b2531 1px, transparent 1px), linear-gradient(90deg, #1b2531 1px, transparent 1px); background-size: 20px 20px; font: 400 15px Silkscreen, monospace; color: #8fa2b6; }
+.of-cables { position: absolute; left: 0; top: 0; width: 1000px; transform: translateZ(2px); pointer-events: none; }
+
+.of-screen { border: 2px solid #05080c; background-color: #061018; background-image: repeating-linear-gradient(transparent 0 3px, currentColor 3px 4px, transparent 4px 7px); background-size: 72% 100%; background-repeat: no-repeat; background-position: 4px 3px; }
+.of-station[data-status="paused"] .of-screen { color: #2b3644; }
+.of-station[data-status="idle"] .of-screen { color: #3f6a58; }
+.of-station[data-status="working"] .of-screen { color: #38bdf8; }
+.of-station[data-status="approval"] .of-screen { color: #fbbf24; }
+.of-station[data-status="error"] .of-screen { color: #f87171; }
+.of-station[data-status="working"] .of-screen, .of-station[data-status="approval"] .of-screen, .of-station[data-status="error"] .of-screen { animation: of-pulse 2.4s infinite; }
+
+.of-deskfront { background-image: linear-gradient(#38bdf8, #38bdf8); background-size: 100% 1px; background-repeat: no-repeat; }
+.of-rack { background-color: #0d1218 !important; background-image: radial-gradient(#4ade80 1px, transparent 1.6px), repeating-linear-gradient(#0d1218 0 9px, #26313e 9px 10px); background-size: 9px 10px, 100% 100%; }
+.of-graphs { border: 2px solid #05080c; background-color: #061018 !important; background-image: linear-gradient(0deg, #38bdf8 38%, transparent 38%), linear-gradient(0deg, #38bdf8 62%, transparent 62%), linear-gradient(0deg, #fbbf24 82%, transparent 82%), linear-gradient(0deg, #38bdf8 46%, transparent 46%); background-size: 16% 100%; background-position: 4% 0, 34% 0, 64% 0, 94% 0; background-repeat: no-repeat; }
+.of-windows { background-color: #070b11 !important; background-image: linear-gradient(90deg, transparent 48%, #1c2632 48% 52%, transparent 52%), radial-gradient(#7dd3fc 1px, transparent 1.5px); background-size: 120px 100%, 37px 29px; }
+.of-noc { display: flex; align-items: center; justify-content: center; border: 3px solid #05080c; color: #7dd3fc; font: 400 20px Silkscreen, monospace; text-align: center; padding: 6px; }
+.of-sign { display: flex; align-items: center; justify-content: center; color: #38bdf8; font: 700 30px Silkscreen, monospace; }
+.of-poster { display: flex; align-items: center; justify-content: center; color: #0b1016; font: 700 13px/1.25 Silkscreen, monospace; text-align: center; padding: 5px; }
+
+.of-fc-plain, .of-fc-glasses, .of-fc-shades, .of-fc-beard, .of-fc-robot, .of-tuxface { background-repeat: no-repeat; }
+.of-fc-plain { background-image: linear-gradient(#10151c, #10151c), linear-gradient(#10151c, #10151c); background-size: 4px 4px; background-position: 5px 9px, 17px 9px; }
+.of-fc-glasses { background-image: linear-gradient(#10151c, #10151c), linear-gradient(#10151c, #10151c), linear-gradient(#bfe9ff, #bfe9ff), linear-gradient(#bfe9ff, #bfe9ff), linear-gradient(#10151c, #10151c); background-size: 3px 3px, 3px 3px, 8px 7px, 8px 7px, 26px 2px; background-position: 6px 10px, 17px 10px, 3px 8px, 15px 8px, 0 11px; }
+.of-fc-shades { background-image: linear-gradient(#38bdf8, #38bdf8), linear-gradient(#050709, #050709); background-size: 4px 1px, 24px 7px; background-position: 4px 9px, 1px 8px; }
+.of-fc-beard { background-image: linear-gradient(#10151c, #10151c), linear-gradient(#10151c, #10151c), linear-gradient(#4a3324, #4a3324); background-size: 4px 4px, 4px 4px, 26px 10px; background-position: 5px 7px, 17px 7px, 0 14px; }
+.of-fc-robot { background-image: linear-gradient(#38bdf8, #38bdf8), linear-gradient(#38bdf8, #38bdf8), linear-gradient(#0b1016, #0b1016); background-size: 6px 4px, 6px 4px, 14px 2px; background-position: 4px 8px, 16px 8px, 6px 17px; }
+.of-tuxbelly { background-image: radial-gradient(ellipse 15px 17px at 50% 58%, #f1f5f9 98%, transparent 100%); }
+.of-tuxface { background-image: linear-gradient(#050709, #050709), linear-gradient(#050709, #050709), linear-gradient(#f8fafc, #f8fafc), linear-gradient(#f8fafc, #f8fafc); background-size: 4px 5px, 4px 5px, 10px 12px, 10px 12px; background-position: 11px 11px, 21px 11px, 7px 7px, 19px 7px; }
+
+.of-ring { position: absolute; border: 3px solid #e6edf3; pointer-events: none; }
+.of-ring-approval { border-color: #fbbf24; animation: of-pulse 1.6s infinite; }
+.of-ring-error { border-color: #f87171; animation: of-pulse 1.6s infinite; }
+
+.of-sign3 { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; transform-origin: 0 0; }
+.of-bubble { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 2px solid #05080c; font: 700 18px Silkscreen, monospace; }
+.of-bubble-approval { background: #fbbf24; color: #2b1d02; }
+.of-bubble-error { background: #f87171; color: #2d0606; }
+.of-plate { pointer-events: auto; display: flex; align-items: center; gap: 6px; white-space: nowrap; min-height: 28px; padding: 2px 8px; border: 1px solid #3a4a5c; background: #0b1016f2; color: #e6edf3; font: 400 12px Silkscreen, monospace; }
+.of-plate-on { border-color: #e6edf3; background: #1b2531; }
+
+.of-cam { position: absolute; display: flex; gap: 6px; }
+.of-cam-presets { left: 10px; top: 10px; max-width: calc(100% - 20px); }
+.of-cam-move { right: 10px; bottom: 10px; }
+
+
+/* Figures. The figure is one group per desk; each look has a reason in the agent's real state. */
+.of-fig { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-style: preserve-3d; transition: transform 0.6s ease; }
+.of-station[data-motion="idle"] .of-fig { animation: of-breathe 5s ease-in-out infinite; }
+.of-station[data-motion="busy"] .of-fig, .of-station[data-motion="starting"] .of-fig,
+.of-station[data-motion="tool"] .of-fig, .of-station[data-motion="action"] .of-fig { animation: of-type 0.42s steps(2) infinite; }
+.of-station[data-motion="thinking"] .of-fig { animation: of-think 3.2s ease-in-out infinite; }
+.of-station[data-motion="delegating"] .of-fig { transform: translateZ(12px) rotateZ(var(--of-face, 0deg)); }
+.of-station[data-motion="reviewing"] .of-fig { transform: translateY(5px) rotateX(-6deg); }
+.of-station[data-motion="approval"] .of-fig { transform: translateZ(6px); animation: of-wait 2.4s ease-in-out infinite; }
+.of-station[data-motion="error"] .of-fig { animation: of-shake 0.5s ease-in-out 3, of-slump 0.4s ease 1.5s forwards; }
+.of-station[data-motion="completed"] .of-fig { animation: of-hop 0.55s ease-out 2; }
+@keyframes of-breathe { 50% { transform: translateZ(1px); } }
+@keyframes of-type { 50% { transform: translateZ(1.5px); } }
+@keyframes of-think { 25% { transform: rotateZ(5deg); } 75% { transform: rotateZ(-5deg); } }
+@keyframes of-wait { 50% { transform: translateZ(9px); } }
+@keyframes of-shake { 25% { transform: rotateZ(4deg); } 75% { transform: rotateZ(-4deg); } }
+@keyframes of-slump { to { transform: translateY(4px) translateZ(-3px); } }
+@keyframes of-hop { 50% { transform: translateZ(16px); } }
+
+/* Screens show the kind of work, only while the agent works. Synthetic, never real output. */
+.of-station[data-status="working"] .of-screen { animation: of-scroll 1.6s linear infinite; background-size: 72% 200%; }
+.of-station[data-status="working"][data-screen="code"] .of-screen { background-image: linear-gradient(90deg, #c084fc 0 22%, transparent 22% 30%, #38bdf8 30% 64%, transparent 64%), repeating-linear-gradient(transparent 0 3px, currentColor 3px 4px, transparent 4px 7px); background-size: 40% 4px, 72% 200%; background-repeat: repeat-y, no-repeat; background-position: 10px 0, 4px 3px; }
+.of-station[data-status="working"][data-screen="security"] .of-screen { color: #fbbf24; background-image: linear-gradient(transparent 0 46%, #fbbf24 46% 54%, transparent 54%), repeating-linear-gradient(90deg, transparent 0 5px, #3f2e0b 5px 6px); background-size: 100% 200%, 100% 100%; animation: of-sweep 2s linear infinite; }
+.of-station[data-status="working"][data-screen="dashboard"] .of-screen { background-image: linear-gradient(0deg, #38bdf8 40%, transparent 40%), linear-gradient(0deg, #4ade80 70%, transparent 70%), linear-gradient(0deg, #38bdf8 55%, transparent 55%), linear-gradient(0deg, #fbbf24 30%, transparent 30%); background-size: 16% 100%; background-position: 6% 0, 34% 0, 62% 0, 90% 0; background-repeat: no-repeat; animation: of-bars 1.8s ease-in-out infinite alternate; }
+.of-station[data-status="working"][data-screen="containers"] .of-screen { background-image: radial-gradient(#2563eb 40%, transparent 42%), radial-gradient(#16a34a 40%, transparent 42%); background-size: 9px 9px, 9px 9px; background-position: 0 0, 4px 4px; animation: of-scroll 2.4s linear infinite; }
+.of-station[data-status="working"][data-screen="patches"] .of-screen { background-image: linear-gradient(#4ade80, #4ade80); background-size: 0% 30%; background-position: 4px 50%; background-repeat: no-repeat; animation: of-progress 3s ease-in-out infinite; }
+.of-station[data-status="working"][data-screen="network"] .of-screen { background-image: radial-gradient(#38bdf8 1px, transparent 1.6px); background-size: 7px 7px; animation: of-scroll 1.2s linear infinite; }
+@keyframes of-scroll { to { background-position-y: -24px; } }
+@keyframes of-sweep { from { background-position: 0 100%, 0 0; } to { background-position: 0 -100%, 0 0; } }
+@keyframes of-bars { to { background-size: 16% 70%; } }
+@keyframes of-progress { to { background-size: 90% 30%; } }
+
+/* A short ring when work arrives or finishes. */
+.of-ring-starting { border-color: #38bdf8; animation: of-arrive 1.2s ease-out forwards; }
+.of-ring-completed { border-color: #4ade80; animation: of-arrive 1.6s ease-out forwards; }
+@keyframes of-arrive { from { opacity: 1; } to { opacity: 0; } }
+
+/* Work on its way between desks. */
+.of-flow .of-link { stroke-width: 3; }
+.of-flow-return .of-link { stroke: #4ade80; }
+.of-packet { fill: #38bdf8; stroke: #05080c; stroke-width: 1.5; }
+.of-flow-return .of-packet { fill: #4ade80; }
+
+/* Speech above the nameplate: what the agent is doing, from the event that said so. */
+.of-bubble3 { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 7px; border: 2px solid #05080c; font: 400 11px Silkscreen, monospace; }
+.of-bubble-talk { background: #0b2333; color: #bae6fd; }
+.of-bubble-done { background: #0d2a18; color: #bbf7d0; }
+
+/* Server racks follow the whole floor: calm, busy or something needs a person. */
+.of-world[data-load="busy"] .of-rack { animation: of-rack 2.8s steps(2) infinite; }
+.of-world[data-load="alert"] .of-rack { background-image: radial-gradient(#fbbf24 1px, transparent 1.6px), repeating-linear-gradient(#0d1218 0 9px, #26313e 9px 10px) !important; }
+@keyframes of-rack { 50% { filter: brightness(1.5); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .of-world, .of-fig { transition: none; }
+  .of-screen, .of-station .of-screen, .of-ring-approval, .of-ring-error, .of-fig, .of-rack, .of-ring-starting, .of-ring-completed { animation: none !important; }
+}

@@ -11,8 +11,10 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import create_engine, select, func
 from sqlalchemy.orm import Session
+from app.models.ai_budget import AIBudgetWeek, AIBudgetReservation
 from app.models.ai import AIAgent, AIProvider, AITask, AIUsage
 from app.models.user import User
+from app.models.ai_memory import AIMemoryPreference
 from app.models.audit import AuditLogEntry
 from app.models.ai_collaboration import (
     AICollaborationSettings as Settings, AICollaborationBoard as Board,
@@ -24,7 +26,7 @@ from worker_ai.ai.collaboration import Collaboration, CollaborationStopped, begi
 from worker_ai.ai.providers.base import ProviderResult, ToolCall
 from worker_ai.ai.runtime import run_agent
 
-TABLES = [User.__table__, AIProvider.__table__, AIAgent.__table__, AITask.__table__, AIUsage.__table__, AuditLogEntry.__table__,
+TABLES = [AIBudgetWeek.__table__, AIBudgetReservation.__table__, AIMemoryPreference.__table__, User.__table__, AIProvider.__table__, AIAgent.__table__, AITask.__table__, AIUsage.__table__, AuditLogEntry.__table__,
           Settings.__table__, Board.__table__, Post.__table__, Daily.__table__, Reservation.__table__]
 
 @pytest.fixture
@@ -46,7 +48,7 @@ def database():
         for slug in ("coordinator", "linux", "network"):
             agent = AIAgent(slug=slug, name=slug, provider_id=provider.id, model=slug, enabled=True,
                             system_prompt=slug, allowed_tools=[], allowed_hosts=[], allowed_environments=[],
-                            max_tool_calls=8, max_execution_seconds=90)
+                            max_tool_calls=8, max_execution_seconds=300)
             db.add(agent)
             agents[slug] = agent
         db.flush()
@@ -84,12 +86,19 @@ class FakeProvider:
 def test_three_agents_share_board_and_one_budget(database):
     d = database
     provider = FakeProvider()
-    with patch("worker_ai.ai.runtime.build_provider", return_value=provider), patch("worker_ai.ai.runtime.set_agent_state"), patch("worker_ai.ai.agent_state.set_agent_state"):
+    with patch("worker_ai.ai.runtime.memory_owner", return_value=d.user.id) as personal_owner, patch("worker_ai.ai.runtime.note_context", return_value="PRIVATE_NOTE_SENTINEL") as personal_notes, patch("worker_ai.ai.runtime.reserve_usd", return_value=None), patch("worker_ai.ai.runtime.settle_usd"), patch("worker_ai.ai.runtime.build_provider", return_value=provider), patch("worker_ai.ai.runtime.set_agent_state"), patch("worker_ai.ai.agent_state.set_agent_state"):
         result = run_agent(d.db, d.agents["coordinator"], d.task.input_message, task_id=str(d.task.id))
+    personal_owner.assert_not_called()
+    personal_notes.assert_not_called()
+    assert all("PRIVATE_NOTE_SENTINEL" not in str(call) for call in provider.calls)
+    assert all(not ({"recall_memory", "remember_fact"} & {tool["name"] for tool in call["tools"]}) for call in provider.calls)
     board = d.db.get(Board, d.task.id, populate_existing=True)
     posts = list(d.db.execute(select(Post).order_by(Post.sequence)).scalars())
     assert result.agents_used == ["coordinator", "linux", "network"]
-    assert [p.kind for p in posts] == ["question", "question", "answer", "answer", "answer"]
+    assert [p.kind for p in posts] == ["question", "question", "answer", "answer", "summary"]
+    assert posts[2].reply_to_id == posts[1].id and posts[2].recipient == "linux"
+    assert posts[3].reply_to_id == posts[0].id and posts[3].recipient == "coordinator"
+    assert posts[4].reply_to_id is None and posts[4].recipient is None
     assert board.status == "completed" and board.model_calls == 5
     assert board.actual_tokens == 800 and board.charged_tokens > board.actual_tokens
     assert all(c["max_tokens"] == d.policy.max_output_tokens for c in provider.calls)
@@ -100,7 +109,7 @@ def test_exhausted_budget_does_not_call_provider(database):
     board = d.db.get(Board, d.task.id)
     board.policy = {**board.policy, "max_tokens": 2000, "max_output_tokens": 128}
     d.db.commit()
-    with patch("worker_ai.ai.runtime.build_provider") as build, patch("worker_ai.ai.runtime.set_agent_state"):
+    with patch("worker_ai.ai.runtime.reserve_usd", return_value=None), patch("worker_ai.ai.runtime.settle_usd"), patch("worker_ai.ai.runtime.build_provider") as build, patch("worker_ai.ai.runtime.set_agent_state"):
         result = run_agent(d.db, d.agents["coordinator"], "Large context " * 1000, task_id=str(d.task.id))
     build.return_value.chat.assert_not_called()
     assert "token budget" in result.text
@@ -257,7 +266,7 @@ def test_operational_tools_are_denied_even_if_model_requests_them(database):
         ProviderResult(text="", stop_reason="tool_use", tool_calls=[ToolCall("write", "run_shell_command", {"command": "touch /tmp/should-not-exist"})], assistant_message={"role": "assistant", "content": ""}, input_tokens=100, output_tokens=100),
         ProviderResult(text="No operational changes performed", assistant_message={"role": "assistant", "content": "done"}, input_tokens=100, output_tokens=100),
     ])
-    with patch("worker_ai.ai.runtime.build_provider", return_value=provider), patch("worker_ai.ai.runtime.set_agent_state"), patch("worker_ai.ai.runtime.request_approval") as approval, patch("worker_ai.ai.runtime._safe_read") as read:
+    with patch("worker_ai.ai.runtime.reserve_usd", return_value=None), patch("worker_ai.ai.runtime.settle_usd"), patch("worker_ai.ai.runtime.build_provider", return_value=provider), patch("worker_ai.ai.runtime.set_agent_state"), patch("worker_ai.ai.runtime.request_approval") as approval, patch("worker_ai.ai.runtime._safe_read") as read:
         run_agent(d.db, d.agents["coordinator"], "Investigate", task_id=str(d.task.id))
     approval.assert_not_called()
     read.assert_not_called()
@@ -272,7 +281,7 @@ def test_public_agent_state_hides_collaboration_content():
         with patch("worker_ai.ai.agent_state.publish_agent_event") as publish:
             set_agent_state(SimpleNamespace(commit=lambda: None), agent, "working", "Private question and hostname", "private-host", "private-task")
         assert agent.current_task == "Collaboration investigation"
-        publish.assert_called_once_with("linux", "working", "Collaboration investigation", None, None)
+        publish.assert_called_once_with("linux", "working", "Collaboration investigation", None, None, event=None, peer=None, tool=None)
     finally:
         CURRENT.reset(token)
 
@@ -294,3 +303,158 @@ def test_migration_upgrade_and_downgrade(database):
             assert connection.execute(select(Settings.revision)).scalar_one() == 1
             module.downgrade()
             module.upgrade()
+
+
+def _experience(d, *, owner=None, scope="current", content="Verified diagnostic source: synthetic metric; recovery cause remains uncertain", status="completed", task_status="completed", kind="experience", agent="linux"):
+    from worker_ai.ai.collaboration import scope_snapshot
+    when = now() - timedelta(minutes=10)
+    user_id = owner or d.user.id
+    task = AITask(agent_id=d.agents["coordinator"].id, owner_user_id=user_id, requested_by="synthetic",
+        source="collaboration", input_message="Earlier investigation", status=task_status, created_at=when)
+    d.db.add(task); d.db.flush()
+    board = Board(task_id=task.id, owner_user_id=user_id, policy=d.policy.model_dump(),
+        scope_snapshot=scope_snapshot(d.agents["coordinator"]) if scope == "current" else scope,
+        participants=["coordinator", agent], requests=[], status=status,
+        created_at=when, expires_at=when+timedelta(minutes=5))
+    d.db.add(board); d.db.flush()
+    post = Post(task_id=task.id, sequence=1, agent=agent, kind=kind, content=content, created_at=when)
+    d.db.add(post); d.db.commit()
+    return post
+
+
+def _experience_context(d):
+    from worker_ai.ai.collaboration import scope_snapshot
+    d.db.get(Board, d.task.id).scope_snapshot = scope_snapshot(d.agents["coordinator"])
+    d.db.commit()
+    return begin(d.db, d.agents["coordinator"], str(d.task.id))
+
+
+def test_experiences_are_owner_scope_kind_and_completion_filtered(database):
+    d = database
+    context = _experience_context(d)
+    selected = _experience(d, content="capacity synthetic-memory-source")
+    other = User(username="other-memory-owner", password_hash="test", role="admin")
+    d.db.add(other); d.db.commit()
+    _experience(d, owner=other.id, content="PRIVATE_OTHER_OWNER")
+    _experience(d, scope=None, content="LEGACY_UNSCOPED")
+    _experience(d, scope={"allowed_hosts":["restricted-host"],"allowed_environments":[]}, content="PRIVATE_OTHER_SCOPE")
+    _experience(d, status="failed", content="FAILED_BOARD")
+    _experience(d, task_status="failed", content="FAILED_TASK")
+    _experience(d, kind="evidence", content="NOT_AN_EXPERIENCE")
+    result = context.recall(d.agents["coordinator"], "")
+    assert [row["post_id"] for row in result["experiences"]] == [str(selected.id)]
+    assert result["experiences"][0]["task_id"] == str(selected.task_id)
+    assert result["experiences"][0]["agent"] == "linux"
+    assert "created_at" in result["experiences"][0]
+    assert "current verification" in result["notice"]
+    assert "PRIVATE" not in str(result)
+
+
+@pytest.mark.parametrize("change", ["disabled", "read", "scope", "missing"])
+def test_experience_reuse_rechecks_all_historical_participants(database, change):
+    d = database
+    context = _experience_context(d)
+    _experience(d)
+    assert len(context.recall(d.agents["coordinator"], "")["experiences"]) == 1
+    if change == "disabled":
+        d.agents["linux"].enabled = False
+    elif change == "read":
+        policy = d.policy.model_copy(deep=True)
+        grant = policy.agents["linux"]
+        grant.read = grant.post = grant.ask = grant.respond = False
+        d.db.get(Settings, 1).policy = policy.model_dump()
+    elif change == "scope":
+        d.agents["linux"].allowed_environments = ["restricted"]
+    else:
+        from sqlalchemy import delete
+        d.db.execute(delete(AIAgent).where(AIAgent.id == d.agents["linux"].id))
+    d.db.commit()
+    assert context.recall(d.agents["coordinator"], "")["experiences"] == []
+
+
+def test_experience_reuse_honors_memory_preference_without_private_memory_tools(database):
+    d = database
+    context = _experience_context(d)
+    _experience(d)
+    pref = AIMemoryPreference(user_id=d.user.id, enabled=False)
+    d.db.add(pref); d.db.commit()
+    result = context.recall(d.agents["coordinator"], "")
+    assert result == {"experiences":[], "memory_enabled":False}
+    pref.enabled = True; d.db.commit()
+    assert len(context.recall(d.agents["coordinator"], "")["experiences"]) == 1
+    names = {row["name"] for row in context.schemas(d.agents["coordinator"])}
+    assert "collaboration_recall" in names
+    assert "recall_memory" not in names and "remember_fact" not in names
+
+
+def test_experience_results_and_queries_are_bounded_and_wildcards_literal(database):
+    d = database
+    context = _experience_context(d)
+    for index in range(7):
+        _experience(d, content=f"case-{index}: usage50%_full " + "a"*2500)
+    assert len(context.recall(d.agents["coordinator"], "")["experiences"]) == 5
+    result = context.recall(d.agents["coordinator"], "50%_full")
+    assert len(result["experiences"]) == 5
+    assert all(len(row["content"]) <= 2000 for row in result["experiences"])
+    assert context.recall(d.agents["coordinator"], "50%_missing")["experiences"] == []
+    assert "error" in context.recall(d.agents["coordinator"], "x"*301)
+    assert "error" in context.recall(d.agents["coordinator"], {"query":"bad-type"})
+
+
+def test_persisted_scope_snapshot_blocks_narrowed_board_before_read(database):
+    d = database
+    context = _experience_context(d)
+    d.agents["coordinator"].allowed_hosts = ["restricted-host"]
+    d.db.commit()
+    # A new process captures the narrowed current scope, but must still reject
+    # the board's old broad scope before reading any existing post.
+    fresh = Collaboration(d.db, d.task.id, d.agents["coordinator"], d.policy)
+    with pytest.raises(CollaborationStopped, match="Board scope changed"):
+        fresh.read(d.agents["coordinator"])
+
+
+def test_legacy_current_board_cannot_reuse_experiences(database):
+    d = database
+    context = begin(d.db, d.agents["coordinator"], str(d.task.id))
+    _experience(d)
+    assert context.recall(d.agents["coordinator"], "")["experiences"] == []
+
+
+def test_experience_post_visible_and_cross_board_reply_rejected(database):
+    d = database
+    context = _experience_context(d)
+    saved = context.post(d.agents["coordinator"], "experience", "Source: synthetic measurement; observed recovery, causal fix unverified")
+    assert context.read(d.agents["linux"])[0]["id"] == saved["post_id"]
+    question = _experience(d, kind="question", agent="coordinator")
+    question.recipient = "linux"; d.db.commit()
+    with pytest.raises(CollaborationStopped, match="does not match"):
+        context.post(d.agents["linux"], "answer", "invalid", recipient="coordinator", automatic=True, reply_to_id=question.id)
+
+
+def test_current_board_deleted_participant_blocks_further_reads(database):
+    from sqlalchemy import delete
+    d = database
+    context = _experience_context(d)
+    board = d.db.get(Board, d.task.id)
+    board.participants = ["coordinator", "linux"]
+    d.db.commit()
+    d.db.execute(delete(AIAgent).where(AIAgent.id == d.agents["linux"].id)); d.db.commit()
+    with pytest.raises(CollaborationStopped, match="no longer available"):
+        context.read(d.agents["coordinator"])
+
+
+@pytest.mark.parametrize("change", ["owner", "source", "lead"])
+def test_current_board_trusted_task_consistency_before_reads(database, change):
+    d = database
+    context = _experience_context(d)
+    if change == "owner":
+        other = User(username="different-owner", password_hash="test", role="admin")
+        d.db.add(other); d.db.flush()
+        d.task.owner_user_id = other.id
+    elif change == "source":
+        d.task.source = "web"
+    else:
+        d.task.agent_id = d.agents["linux"].id
+    d.db.commit()
+    with pytest.raises(CollaborationStopped, match="ownership or lead agent changed"):
+        context.read(d.agents["coordinator"])

@@ -7,7 +7,7 @@ import { ServiceStatusGrid } from "@/components/monitoring/ServiceStatusGrid";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { api, type Host, type HostMetricsResponse, type ServiceStatus } from "@/lib/api";
-import { formatBytesPerSec } from "@/lib/format";
+import { formatBytesPerSec, formatTime } from "@/lib/format";
 
 const LIVE_POLL_MS = 10000;
 
@@ -93,7 +93,7 @@ export default function Wallboard() {
             ))}
           </Select>
           <span className="font-mono text-lg tabular-nums text-muted-foreground">
-            {now.toLocaleTimeString()}
+            {formatTime(now)}
           </span>
         </div>
       </div>

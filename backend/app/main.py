@@ -9,8 +9,15 @@ from sqlalchemy import select
 from app.api.deps import get_current_user
 from app.api.routes import (
     ai,
+    ai_board,
+    ai_developer,
     ai_memory,
+    nova_import,
+    nova_routines,
+    nova_sources,
+    memory_organize,
     ai_collaboration,
+    ai_budget,
     alerts,
     ansible_playbooks,
     app_catalog,
@@ -28,6 +35,7 @@ from app.api.routes import (
     jobs,
     logs,
     metrics,
+    monitoring,
     patching,
     registries,
     security,
@@ -55,6 +63,10 @@ async def lifespan(_: FastAPI):
     await start_traffic_watch()
     from app.services.talk_watch import watch_loop
     talk_watch = asyncio.create_task(watch_loop())
+    from app.services.incident_watch import watch_loop as im_watch_loop
+    im_watch = asyncio.create_task(im_watch_loop())
+    from app.services.ai_budget_watch import watch_loop as budget_watch_loop
+    budget_watch = asyncio.create_task(budget_watch_loop())
     from app.mcp.maintenance import run as maintain_mcp
     mcp_maintenance = asyncio.create_task(maintain_mcp())
     try:
@@ -63,6 +75,12 @@ async def lifespan(_: FastAPI):
                 await stack.enter_async_context(mcp_server.session_manager.run())
             yield
     finally:
+        budget_watch.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await budget_watch
+        im_watch.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await im_watch
         mcp_maintenance.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await mcp_maintenance
@@ -121,6 +139,7 @@ app.include_router(containers.ws_router, prefix="/api", tags=["containers"])
 app.include_router(registries.router, prefix="/api", tags=["registries"], dependencies=_AUTH)
 app.include_router(app_catalog.router, prefix="/api", tags=["app-catalog"], dependencies=_AUTH)
 app.include_router(logs.router, prefix="/api", tags=["logs"], dependencies=_AUTH)
+app.include_router(monitoring.router, prefix="/api", tags=["monitoring"], dependencies=_AUTH)
 app.include_router(metrics.router, prefix="/api", tags=["metrics"], dependencies=_AUTH)
 app.include_router(ansible_playbooks.router, prefix="/api", tags=["ansible"], dependencies=_AUTH)
 app.include_router(traffic.router, prefix="/api", tags=["traffic"], dependencies=_AUTH)
@@ -138,6 +157,13 @@ app.include_router(traffic.router, prefix="/api", tags=["traffic"], dependencies
 app.include_router(ai.stream_router, prefix="/api", tags=["ai"])
 app.include_router(ai_collaboration.router, prefix="/api", tags=["ai-collaboration"], dependencies=_AUTH)
 app.include_router(ai_memory.router, prefix="/api", tags=["ai-memory"], dependencies=_AUTH)
+app.include_router(nova_import.router, prefix="/api", tags=["nova-import"], dependencies=_AUTH)
+app.include_router(memory_organize.router, prefix="/api", tags=["ai-memory"], dependencies=_AUTH)
+app.include_router(nova_routines.router, prefix="/api", tags=["nova-routines"], dependencies=_AUTH)
+app.include_router(nova_sources.router, prefix="/api", tags=["nova-routines"], dependencies=_AUTH)
+app.include_router(ai_budget.router, prefix="/api", tags=["ai-budget"], dependencies=_AUTH)
+app.include_router(ai_board.router, prefix="/api", tags=["ai"], dependencies=_AUTH)
+app.include_router(ai_developer.router, prefix="/api", tags=["ai"], dependencies=_AUTH)
 app.include_router(ai.router, prefix="/api", tags=["ai"], dependencies=_AUTH)
 # No dependencies=_AUTH: Nextcloud signs each webhook with the bot's shared
 # secret and the handler verifies that itself - see the module docstring.
@@ -146,6 +172,15 @@ app.include_router(integrations.router, prefix="/api", tags=["integrations"])
 from app.api.routes import traffic_settings
 app.include_router(traffic_settings.router, prefix="/api", tags=["settings"], dependencies=_AUTH)
 
+from app.api.routes import incidents
+app.include_router(incidents.router, prefix="/api", tags=["incidents"], dependencies=_AUTH)
+
+from app.api.routes import ai_traffic
+# The collector authenticates with its own token (no user session); the UI routes need a user.
+app.include_router(ai_traffic.ingest_router, prefix="/api", tags=["ai-traffic"])
+app.include_router(ai_traffic.router, prefix="/api", tags=["ai-traffic"], dependencies=_AUTH)
+
+# Keep REST routes before the optional MCP catch-all mount.
 from app.api.routes import mcp as mcp_routes
 from app.mcp.guard import MCPGuard
 app.include_router(mcp_routes.router, prefix="/api", tags=["mcp"], dependencies=_AUTH)

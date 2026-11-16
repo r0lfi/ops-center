@@ -16,7 +16,8 @@ CHANNEL = "ai_agent_events"
 
 
 def publish_agent_event(
-    agent_slug: str, status: str, activity: str | None, target: str | None, task_id: str | None
+    agent_slug: str, status: str, activity: str | None, target: str | None, task_id: str | None,
+    event: str | None = None, peer: str | None = None, tool: str | None = None,
 ) -> None:
     # Never let a Redis hiccup break the actual agent run - the DB row
     # (set by agent_state.set_agent_state, committed just before this is
@@ -31,6 +32,11 @@ def publish_agent_event(
                     "activity": activity,
                     "target": target,
                     "task_id": task_id,
+                    # What just happened (task_started, tool_started, delegated, ...),
+                    # the other agent involved and the tool name. See agent_state.EVENTS.
+                    "event": event,
+                    "peer": peer,
+                    "tool": tool,
                     "ts": time.time(),
                 },
                 default=str,

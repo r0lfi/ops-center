@@ -3,6 +3,12 @@ import os
 from celery import Celery
 from celery.signals import worker_process_init
 
+from worker_ai.ai import netlog
+
+# AI Traffic Monitor: passive, read-only record of every outbound request this
+# worker makes (see worker_ai/ai/netlog.py). Installed before any client exists.
+netlog.install()
+
 REDIS_URL = os.environ["REDIS_URL"]
 REDIS_SENTINELS = os.environ.get("REDIS_SENTINELS", "")
 REDIS_MASTER_NAME = os.environ.get("REDIS_MASTER_NAME", "ops-center-redis")
@@ -48,8 +54,8 @@ celery_app.conf.update(
     # blocking Ansible-job-and-wait, see ansible_ops.py) plus an LLM round
     # trip per step - generous but bounded so a stuck run doesn't hang a
     # worker slot forever. Individual agents also enforce their own
-    # max_execution_seconds (app.models.ai.AIAgent) inside the run. Raised
-    # from 600 alongside the General Agent's 900s budget for longer
-    # web-research investigations.
-    task_time_limit=1200,
+    # max_execution_seconds (app.models.ai.AIAgent) inside the run. Above the
+    # longest per-agent budget (the Developer agent's 30 minutes) plus room
+    # for the closing model call, so the run's own deadline always ends it first.
+    task_time_limit=2400,
 )

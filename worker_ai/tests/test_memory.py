@@ -32,7 +32,7 @@ def test_recall_scopes_both_archive_and_notes_and_escapes_wildcards():
     recall(db, owner, str(task_id), "50%_load")
     statements = [sql(c.args[0]) for c in db.execute.call_args_list]
     assert str(owner) in statements[0] and str(owner) in statements[1]
-    assert "owner_user_id" in statements[0] and "source IN ('web', 'talk')" in statements[0]
+    assert "owner_user_id" in statements[0] and "source IN ('web', 'talk', 'incident')" in statements[0]
     assert "LIMIT 4" in statements[0] and "LIMIT 8" in statements[1]
     assert "ESCAPE '/'" in statements[0]
 
@@ -154,3 +154,42 @@ def test_talk_history_uses_actual_source_and_isolates_owners():
     db.reset_mock(); task.owner_user_id = None
     _build_contextual_message(db, "talk:private", "hello", task)
     assert 'owner_user_id IS NULL' in sql(db.execute.call_args.args[0])
+
+
+def test_incident_memory_requires_durable_authority_and_enabled_preference():
+    from unittest.mock import patch
+    task = AITask(id=uuid.uuid4(), source="incident", owner_user_id=uuid.uuid4())
+    user = User(id=task.owner_user_id, is_active=True)
+    db = MagicMock()
+    with patch("worker_ai.ai.memory.incident_task_authorized", return_value=False):
+        db.get.side_effect = [task]
+        assert memory_owner(db, str(task.id)) is None
+    with patch("worker_ai.ai.memory.incident_task_authorized", return_value=True):
+        db.get.side_effect = [task, user, None]
+        assert memory_owner(db, str(task.id)) == user.id
+        db.get.side_effect = [task, user, AIMemoryPreference(user_id=user.id, enabled=False)]
+        assert memory_owner(db, str(task.id)) is None
+
+
+def test_incident_context_scopes_prior_experience_and_labels_analysis_unverified():
+    from unittest.mock import patch
+    from worker_ai.ai.memory import incident_context
+    task = AITask(id=uuid.uuid4(), source="incident", owner_user_id=uuid.uuid4(), created_at=datetime.now(timezone.utc))
+    incident = SimpleNamespace(id=2, resource="synthetic-host /data", rule="disk_capacity", source_state="recovered")
+    prior = SimpleNamespace(id=uuid.uuid4(), created_at=task.created_at, status="completed", response_message="A model claimed fixed")
+    result = MagicMock(); result.all.return_value = [(incident, prior)]
+    actions = MagicMock(); actions.scalars.return_value = [SimpleNamespace(tool="expand_disk", status="failed", request_code="OPS-TEST", executed_at=None, requested_at=task.created_at)]
+    mcp = MagicMock(); mcp.scalars.return_value = [SimpleNamespace(tool="ops_service_restart", status="unknown", id=uuid.uuid4(), created_at=task.created_at)]
+    db = MagicMock(); db.scalar.return_value = incident; db.execute.side_effect = [result, actions, mcp]
+    with patch("worker_ai.ai.memory.memory_owner", return_value=task.owner_user_id):
+        context = incident_context(db, task)
+    query = sql(db.execute.call_args_list[0].args[0])
+    assert str(task.owner_user_id) in query and "LIMIT 4" in query
+    assert "analysis_unverified" in context and '"status": "failed"' in context
+    assert '"observed_source_state": "recovered"' in context
+    assert "does not prove which action caused recovery" in context
+    assert '"source": "mcp"' in context and '"status": "unknown"' in context
+    db.reset_mock()
+    with patch("worker_ai.ai.memory.memory_owner", return_value=None):
+        assert incident_context(db, task) == ""
+    db.execute.assert_not_called(); db.scalar.assert_not_called()

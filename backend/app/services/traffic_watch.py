@@ -12,6 +12,7 @@ import json
 import logging
 import shlex
 import time
+import uuid
 from pathlib import Path
 import asyncssh
 from sqlalchemy import select, text
@@ -28,6 +29,14 @@ from app.services.traffic_settings import load_config, enabled_sources
 logger = logging.getLogger("traffic_watch")
 REDIS_SNAPSHOT_KEY = "traffic_watch:snapshot"
 REDIS_SNAPSHOT_TTL = 300
+LEASE_PREFIX = "traffic_watch:lease:"
+LEASE_TTL = 60
+COLLECT_TIMEOUT = 45
+_RELEASE_SCRIPT = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) end return 0"
+)
+_redis_client = None
 _tasks = set()
 _running = {}
 _geoip_reader = None
@@ -71,7 +80,7 @@ class _RemoteTail:
         self.host = host
         self.conn = None
 
-    async def run(self, command):
+    async def run(self, command, stdin=None):
         if self.conn is None:
             h = self.host
             if not h.credential or not h.ssh_host_fingerprint:
@@ -99,7 +108,7 @@ class _RemoteTail:
             else:
                 raise ValueError("Unsupported managed credential type")
             self.conn = await asyncssh.connect(**kwargs)
-        result = await self.conn.run(command, check=False, timeout=30)
+        result = await self.conn.run(command, input=stdin, check=False, timeout=30)
         if result.exit_status != 0:
             raise RuntimeError(
                 "Remote reader failed; check configured path, format and sudo permissions"
@@ -129,14 +138,16 @@ async def _collect(tail, source, checkpoint):
         if source.kind == "wireguard"
         else {"source": source.kind, "config": config, "checkpoint": checkpoint}
     )
+    # Reader source and request travel over stdin, not argv: sudo logs the full command
+    # line to /var/log/secure, and the script used to be logged on every poll (GBs/day).
     command = (
         ("sudo -n " if source.use_sudo else "")
         + "python3 -c "
-        + shlex.quote(reader)
-        + " "
-        + shlex.quote(json.dumps(request))
+        + shlex.quote(
+            "import sys;l=sys.stdin.readline();sys.argv=['-c',l];exec(sys.stdin.read())"
+        )
     )
-    return json.loads(await tail.run(command))
+    return json.loads(await tail.run(command, stdin=json.dumps(request) + "\n" + reader))
 
 
 async def _publish_snapshot():
@@ -144,105 +155,163 @@ async def _publish_snapshot():
 
     payload = await recent(time.time() - 86400)
     payload["events"] = payload["events"][:100]
-    await get_redis_client().set(
-        REDIS_SNAPSHOT_KEY, json.dumps(payload), ex=REDIS_SNAPSHOT_TTL
+    await _redis().set(REDIS_SNAPSHOT_KEY, json.dumps(payload), ex=REDIS_SNAPSHOT_TTL)
+
+
+def _redis():
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = get_redis_client()
+    return _redis_client
+
+
+async def _acquire_lease(name, token):
+    """Best effort: avoids both nodes reading the same source. Correctness does
+    not depend on it; the commit below discards a read another node beat us to."""
+    try:
+        return bool(
+            await _redis().set(LEASE_PREFIX + name, token, nx=True, ex=LEASE_TTL)
+        )
+    except Exception:
+        return True
+
+
+async def _release_lease(name, token):
+    try:
+        await _redis().eval(_RELEASE_SCRIPT, 1, LEASE_PREFIX + name, token)
+    except Exception:
+        pass
+
+
+def _prepare_events(source, rows, since, now):
+    events = []
+    for row in rows:
+        if not since <= row["ts"] <= now + 60:
+            continue
+        if source.kind not in ("ssh", "auth_audit") and _is_private_ip(row["ip"]):
+            continue
+        lat, lon, city, country = _geolocate(row["ip"])
+        row.update(
+            source=source.id,
+            lat=lat,
+            lon=lon,
+            city=city,
+            country=country,
+            suspicious=_is_suspicious(row["status"])
+            or row.get("signal") in ("auth_failure", "auth_throttled"),
+        )
+        events.append(row)
+    return events
+
+
+async def _collect_source(tail, source, host, signature, interval, lock):
+    from app.services.traffic_store import save_batch
+
+    # The DB pool is shared with the API. Never hold a connection while waiting
+    # on SSH: a slow or unreachable host used to pin one connection per source
+    # and starve every API request (QueuePool timeouts -> HTTP 500).
+    async with async_session_factory() as db:
+        cursor = await db.get(TrafficCollector, source.id)
+    seen = cursor.last_success if cursor else None
+    cp = (
+        cursor.checkpoint
+        if cursor and cursor.checkpoint.get("signature") == signature
+        else {}
     )
+    if cp and seen and time.time() - seen < interval:
+        return
+    # Configuration edits start from the new source's current log tail; old
+    # authentication events are never replayed.
+    since = cp.get("since", time.time())
+    result = await asyncio.wait_for(_collect(tail, source, cp), COLLECT_TIMEOUT)
+    now = time.time()
+    events = _prepare_events(source, result["events"], since, now)
+    checkpoint = result["checkpoint"]
+    checkpoint.update(signature=signature, since=since)
+    if host.latitude is not None and host.longitude is not None:
+        checkpoint["destinations"] = {
+            source.id: {
+                "lat": host.latitude,
+                "lon": host.longitude,
+                "city": None,
+                "country": None,
+                "label": source.label,
+            }
+        }
+    async with async_session_factory() as db, db.begin():
+        if not await db.scalar(
+            text("SELECT pg_try_advisory_xact_lock(73810,:key)"), {"key": lock}
+        ):
+            return
+        current = await db.get(
+            TrafficCollector, source.id, with_for_update=True, populate_existing=True
+        )
+        # Another node committed a read from the same checkpoint meanwhile.
+        if (current.last_success if current else None) != seen:
+            return
+        await save_batch(db, source.id, events, checkpoint, now)
+
+
+async def _record_failure(source_id):
+    message = "Source unavailable: check SSH onboarding, log path and reader permissions"
+    try:
+        async with async_session_factory() as db, db.begin():
+            await db.execute(
+                insert(TrafficCollector)
+                .values(name=source_id, checkpoint={}, last_error=message)
+                .on_conflict_do_update(
+                    index_elements=["name"], set_={"last_error": message}
+                )
+            )
+    except Exception:
+        # Must never end the source loop; the next pass retries.
+        logger.warning("Could not record failure for traffic source %s", source_id)
 
 
 async def _source_loop(source, host, signature):
-    from app.services.traffic_store import save_batch
-
     tail = _RemoteTail(host)
     interval = 15 if source.kind == "wireguard" else 5
     lock = int.from_bytes(
         hashlib.sha256(source.id.encode()).digest()[:4], "big", signed=True
     )
+    token = uuid.uuid4().hex
     try:
         while True:
             try:
-                async with async_session_factory() as db, db.begin():
-                    locked = await db.scalar(
-                        text("SELECT pg_try_advisory_xact_lock(73810,:key)"),
-                        {"key": lock},
-                    )
-                    if locked:
-                        cursor = await db.get(TrafficCollector, source.id)
-                        cp = (
-                            cursor.checkpoint
-                            if cursor
-                            and cursor.checkpoint.get("signature") == signature
-                            else {}
+                if await _acquire_lease(source.id, token):
+                    try:
+                        await _collect_source(
+                            tail, source, host, signature, interval, lock
                         )
-                        if (
-                            not cp
-                            or not cursor.last_success
-                            or time.time() - cursor.last_success >= interval
-                        ):
-                            # Configuration edits start from the new source's current
-                            # log tail; old authentication events are never replayed.
-                            since = cp.get("since", time.time())
-                            result = await _collect(tail, source, cp)
-                            now = time.time()
-                            events = []
-                            for row in result["events"]:
-                                if not since <= row["ts"] <= now + 60:
-                                    continue
-                                if source.kind not in (
-                                    "ssh",
-                                    "auth_audit",
-                                ) and _is_private_ip(row["ip"]):
-                                    continue
-                                lat, lon, city, country = _geolocate(row["ip"])
-                                row.update(
-                                    source=source.id,
-                                    lat=lat,
-                                    lon=lon,
-                                    city=city,
-                                    country=country,
-                                    suspicious=_is_suspicious(row["status"])
-                                    or row.get("signal")
-                                    in ("auth_failure", "auth_throttled"),
-                                )
-                                events.append(row)
-                            checkpoint = result["checkpoint"]
-                            checkpoint.update(signature=signature, since=since)
-                            if host.latitude is not None and host.longitude is not None:
-                                checkpoint["destinations"] = {
-                                    source.id: {
-                                        "lat": host.latitude,
-                                        "lon": host.longitude,
-                                        "city": None,
-                                        "country": None,
-                                        "label": source.label,
-                                    }
-                                }
-                            await save_batch(db, source.id, events, checkpoint, now)
-                await _publish_snapshot()
+                    finally:
+                        await _release_lease(source.id, token)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
                 await tail.close()
                 logger.warning(
-                    "Traffic source %s failed; checkpoint retained", source.id
+                    "Traffic source %s failed; checkpoint retained (%s: %s)",
+                    source.id,
+                    type(exc).__name__,
+                    str(exc)[:200],
                 )
-                async with async_session_factory() as db, db.begin():
-                    await db.execute(
-                        insert(TrafficCollector)
-                        .values(
-                            name=source.id,
-                            checkpoint={},
-                            last_error="Source unavailable: check SSH onboarding, log path and reader permissions",
-                        )
-                        .on_conflict_do_update(
-                            index_elements=["name"],
-                            set_={
-                                "last_error": "Source unavailable: check SSH onboarding, log path and reader permissions"
-                            },
-                        )
-                    )
+                await _record_failure(source.id)
             await asyncio.sleep(interval)
     finally:
         await tail.close()
+
+
+async def _snapshot_loop():
+    # One summary for the AI network tool every 30 s, instead of a 1000-row
+    # query after every collection pass of every source.
+    while True:
+        try:
+            await _publish_snapshot()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("Traffic snapshot publish failed")
+        await asyncio.sleep(30)
 
 
 async def _supervise():
@@ -318,7 +387,7 @@ async def _retention_loop():
 async def start_traffic_watch():
     from app.services.traffic_security import security_loop
 
-    for coro in (_supervise(), _retention_loop(), security_loop()):
+    for coro in (_supervise(), _retention_loop(), _snapshot_loop(), security_loop()):
         task = asyncio.create_task(coro)
         _tasks.add(task)
 

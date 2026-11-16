@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
+import { InvestigationBoard, StatusBadge } from "@/components/ai/InvestigationBoard";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type AIAgent, type AITask } from "@/lib/api";
 
@@ -14,6 +16,22 @@ function timeAgo(iso: string | null): string {
 }
 
 export default function AITasks() {
+  const [params] = useSearchParams();
+  const selectedId = params.get("task");
+  const [selected, setSelected] = useState<AITask | null>(null);
+  const [detailError, setDetailError] = useState("");
+  useEffect(() => {
+    setSelected(null); setDetailError("");
+    if (!selectedId) return;
+    let live = true;
+    async function refresh() {
+      try { const task = await api.ai.tasks.get(selectedId!); if (live) { setSelected(task); setDetailError(""); } }
+      catch (error) { if (live) { setSelected(null); setDetailError(error instanceof Error ? error.message : "Investigation unavailable"); } }
+    }
+    void refresh();
+    const timer = setInterval(() => void refresh(), 4000);
+    return () => { live = false; clearInterval(timer); };
+  }, [selectedId]);
   const [tasks, setTasks] = useState<AITask[]>([]);
   const [agents, setAgents] = useState<AIAgent[]>([]);
 
@@ -31,14 +49,24 @@ export default function AITasks() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Tasks</h1>
+      <PageHeader title="Tasks" description="Everything agents have been asked to do, from chat, Talk and incidents." />
+      {selectedId && <Card><CardHeader><CardTitle className="text-base">Investigation and findings</CardTitle></CardHeader><CardContent className="space-y-3">
+        {detailError ? <p role="alert" className="text-sm text-destructive">{detailError}</p> : !selected ? <p role="status" className="text-sm text-muted-foreground">Loading investigation…</p> : <>
+          <p className="text-xs text-muted-foreground">{selected.status} · {agentById[selected.agent_id]?.name || "Agent"} · {selected.source}</p>
+          <p className="whitespace-pre-wrap break-words text-sm">{selected.input_message}</p>
+          <InvestigationBoard task={selected} />
+          <h3 className="text-sm font-medium">Answer</h3>
+          <p className="whitespace-pre-wrap break-words rounded-md bg-secondary p-3 text-sm">{selected.response_message || selected.error_message || "Waiting for the agent's findings."}</p>
+          <p className="text-xs text-muted-foreground">A completed investigation is a report. "The service answers", "the service is healthy" and "the problem is fixed" are different claims: check the evidence above before acting on it.</p>
+        </>}
+      </CardContent></Card>}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">All agent tasks</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Task</th>
@@ -60,17 +88,15 @@ export default function AITasks() {
                 )}
                 {tasks.map((t) => (
                   <tr key={t.id} className="border-b border-border last:border-0 hover:bg-accent/50">
-                    <td className="max-w-xs truncate px-4 py-3">{t.input_message}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{agentById[t.agent_id]?.name ?? "-"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.source}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.requested_by || "-"}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={t.status === "failed" ? "critical" : t.status === "completed" ? "ok" : "unknown"}>
-                        {t.status}
-                      </Badge>
+                    <td data-label="Task" className="max-w-xs truncate px-4 py-3"><Link className="text-primary hover:underline" to={`/ai-agents/tasks?task=${encodeURIComponent(t.id)}`}>{t.input_message}</Link></td>
+                    <td data-label="Agent" className="px-4 py-3 text-muted-foreground">{agentById[t.agent_id]?.name ?? "-"}</td>
+                    <td data-label="Source" className="px-4 py-3 text-muted-foreground">{t.source}</td>
+                    <td data-label="Requested by" className="px-4 py-3 text-muted-foreground">{t.requested_by || "-"}</td>
+                    <td data-label="Status" className="px-4 py-3">
+                      <StatusBadge status={t.status === "completed" && t.outcome ? t.outcome : t.status} />
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.duration_ms ? `${(t.duration_ms / 1000).toFixed(1)}s` : "-"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{timeAgo(t.created_at)}</td>
+                    <td data-label="Duration" className="px-4 py-3 text-muted-foreground">{t.duration_ms ? `${(t.duration_ms / 1000).toFixed(1)}s` : "-"}</td>
+                    <td data-label="When" className="px-4 py-3 text-muted-foreground">{timeAgo(t.created_at)}</td>
                   </tr>
                 ))}
               </tbody>

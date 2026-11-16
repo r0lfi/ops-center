@@ -1,4 +1,13 @@
+import { SessionsPanel } from "@/components/settings/SessionsPanel";
+import { IncidentSettingsPanel } from "@/components/settings/IncidentSettingsPanel";
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import AISettings from "@/pages/AISettings";
+import CollaborationSettings from "@/pages/CollaborationSettings";
+import MCPAccess from "@/pages/MCPAccess";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +27,7 @@ import { api, type AuditLogEntry, type Credential, type Role, type User } from "
 import { useAuth } from "@/lib/auth";
 
 import { TrafficSettingsPanel } from "@/components/settings/TrafficSettingsPanel";
+import { formatDateTime } from "@/lib/format";
 
 const ROLES: Role[] = ["viewer", "operator", "admin"];
 const CREDENTIAL_TYPES = ["ssh_key", "ssh_password"];
@@ -171,7 +181,7 @@ function CredentialManagement() {
         {error && <p className="text-sm text-destructive">{error}</p>}
         {!loading && !error && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="py-2 pr-4 font-medium">Name</th>
@@ -184,10 +194,10 @@ function CredentialManagement() {
               <tbody>
                 {credentials.map((c) => (
                   <tr key={c.id} className="border-b border-border/50">
-                    <td className="py-2 pr-4 font-medium">{c.name}</td>
-                    <td className="py-2 pr-4">{c.credential_type}</td>
-                    <td className="py-2 pr-4 text-muted-foreground">{c.ssh_user ?? "-"}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">
+                    <td data-label="Name" className="py-2 pr-4 font-medium">{c.name}</td>
+                    <td data-label="Type" className="py-2 pr-4">{c.credential_type}</td>
+                    <td data-label="SSH user" className="py-2 pr-4 text-muted-foreground">{c.ssh_user ?? "-"}</td>
+                    <td data-label="Public key" className="py-2 pr-4 font-mono text-xs">
                       {c.public_key ? (
                         <button
                           className="hover:underline"
@@ -200,7 +210,7 @@ function CredentialManagement() {
                         "-"
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-right">
+                    <td data-label="" className="py-2 pr-4 text-right">
                       <Button size="sm" variant="destructive" onClick={() => removeCredential(c)}>
                         Delete
                       </Button>
@@ -348,7 +358,7 @@ function UserManagement() {
         {error && <p className="text-sm text-destructive">{error}</p>}
         {!loading && !error && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="py-2 pr-4 font-medium">Username</th>
@@ -361,8 +371,8 @@ function UserManagement() {
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id} className="border-b border-border/50">
-                    <td className="py-2 pr-4 font-medium">{u.username}</td>
-                    <td className="py-2 pr-4">
+                    <td data-label="Username" className="py-2 pr-4 font-medium">{u.username}</td>
+                    <td data-label="Role" className="py-2 pr-4">
                       <Select
                         className="h-7 w-28 py-0 text-xs"
                         value={u.role}
@@ -376,13 +386,13 @@ function UserManagement() {
                         ))}
                       </Select>
                     </td>
-                    <td className="py-2 pr-4">
+                    <td data-label="Status" className="py-2 pr-4">
                       <Badge variant={u.is_active ? "ok" : "unknown"}>{u.is_active ? "Active" : "Disabled"}</Badge>
                     </td>
-                    <td className="py-2 pr-4 text-muted-foreground">
-                      {u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "never"}
+                    <td data-label="Last login" className="py-2 pr-4 text-muted-foreground">
+                      {u.last_login_at ? formatDateTime(u.last_login_at) : "never"}
                     </td>
-                    <td className="py-2 pr-4 text-right">
+                    <td data-label="" className="py-2 pr-4 text-right">
                       <div className="flex justify-end gap-2">
                         <Button
                           size="sm"
@@ -439,7 +449,7 @@ function AuditLog() {
         {error && <p className="text-sm text-destructive">{error}</p>}
         {!loading && !error && (
           <div className="max-h-[32rem] overflow-y-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="py-2 pr-4 font-medium">Time</th>
@@ -453,14 +463,14 @@ function AuditLog() {
               <tbody>
                 {entries.map((e) => (
                   <tr key={e.id} className="border-b border-border/50 align-top">
-                    <td className="whitespace-nowrap py-2 pr-4 text-muted-foreground">
-                      {new Date(e.created_at).toLocaleString()}
+                    <td data-label="Time" className="whitespace-nowrap py-2 pr-4 text-muted-foreground">
+                      {formatDateTime(e.created_at)}
                     </td>
-                    <td className="py-2 pr-4">{e.user ?? "unknown"}</td>
-                    <td className="py-2 pr-4 text-muted-foreground">{e.source_ip ?? "-"}</td>
-                    <td className="py-2 pr-4">{e.action}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{e.target}</td>
-                    <td className="py-2 pr-4">
+                    <td data-label="User" className="py-2 pr-4">{e.user ?? "unknown"}</td>
+                    <td data-label="Source IP" className="py-2 pr-4 text-muted-foreground">{e.source_ip ?? "-"}</td>
+                    <td data-label="Action" className="py-2 pr-4">{e.action}</td>
+                    <td data-label="Target" className="py-2 pr-4 font-mono text-xs">{e.target}</td>
+                    <td data-label="Result" className="py-2 pr-4">
                       <Badge variant={e.result.startsWith("2") ? "ok" : "critical"}>{e.result}</Badge>
                     </td>
                   </tr>
@@ -481,33 +491,40 @@ function AuditLog() {
   );
 }
 
+const ADMIN_TABS = [
+  { id: "incidents", label: "Incidents & Talk", content: <IncidentSettingsPanel /> },
+  { id: "traffic", label: "Traffic Map", content: <TrafficSettingsPanel /> },
+  { id: "users", label: "Users", content: <><UserManagement /><SessionsPanel /></> },
+  { id: "credentials", label: "Credentials", content: <CredentialManagement /> },
+  { id: "audit", label: "Audit log", content: <AuditLog /> },
+];
+const SHARED_TABS = [
+  { id: "ai", label: "AI & budget", content: <AISettings /> },
+  { id: "collaboration", label: "Collaboration", content: <CollaborationSettings /> },
+  { id: "mcp", label: "MCP access", content: <MCPAccess /> },
+];
+
 export default function Settings() {
   const { user, hasRole } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const tabs = hasRole("admin") ? [...ADMIN_TABS, ...SHARED_TABS] : SHARED_TABS;
+  const requested = params.get("tab");
+  const active = tabs.some((tab) => tab.id === requested) ? requested! : tabs[0].id;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Settings</h1>
+      <PageHeader title="Settings" actions={
         <div className="text-sm text-muted-foreground">
           Signed in as <span className="font-medium text-foreground">{user?.username}</span>{" "}
           <Badge variant={user ? ROLE_BADGE[user.role] : "unknown"}>{user?.role}</Badge>
         </div>
-      </div>
-
-      {hasRole("admin") ? (
-        <>
-          <TrafficSettingsPanel />
-          <UserManagement />
-          <CredentialManagement />
-          <AuditLog />
-        </>
-      ) : (
-        <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            Traffic configuration, user management and the audit log are only visible to administrators.
-          </CardContent>
-        </Card>
-      )}
+      } />
+      <Tabs value={active} onValueChange={(tab) => setParams({ tab }, { replace: true })}>
+        <TabsList aria-label="Settings sections">
+          {tabs.map((tab) => <TabsTrigger key={tab.id} value={tab.id}>{tab.label}</TabsTrigger>)}
+        </TabsList>
+        {tabs.map((tab) => <TabsContent key={tab.id} value={tab.id} className="pt-4">{tab.content}</TabsContent>)}
+      </Tabs>
     </div>
   );
 }

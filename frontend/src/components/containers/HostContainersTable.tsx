@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { currentHealth, isUnhealthy } from "@/lib/containers";
 import { Select } from "@/components/ui/select";
 import { api, type ContainerInfo } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -50,9 +51,9 @@ function matchesFilter(c: ContainerInfo, filter: Filter): boolean {
     case "Restarting":
       return c.status === "restarting";
     case "Unhealthy":
-      return c.health === "unhealthy";
+      return isUnhealthy(c);
     case "Healthy":
-      return c.health === "healthy";
+      return currentHealth(c) === "healthy";
   }
 }
 
@@ -190,7 +191,7 @@ export function HostContainersTable({ hostname }: { hostname: string }) {
       </div>
 
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full text-sm">
+        <table className="ops-card-table w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
               {hasRole("admin") && (
@@ -237,7 +238,7 @@ export function HostContainersTable({ hostname }: { hostname: string }) {
             {pageRows.map((c) => (
               <tr key={c.name} className="border-b border-border last:border-0 hover:bg-accent/50">
                 {hasRole("admin") && (
-                  <td className="px-4 py-3">
+                  <td data-label="Select" className="px-4 py-3">
                     <input
                       type="checkbox"
                       checked={selected.has(c.name)}
@@ -245,7 +246,7 @@ export function HostContainersTable({ hostname }: { hostname: string }) {
                     />
                   </td>
                 )}
-                <td className="px-4 py-3 font-medium">
+                <td data-label="Name" className="px-4 py-3 font-medium">
                   <Link
                     to={`/containers/${encodeURIComponent(hostname)}/${encodeURIComponent(c.name)}`}
                     className="hover:underline"
@@ -253,15 +254,15 @@ export function HostContainersTable({ hostname }: { hostname: string }) {
                     {c.name}
                   </Link>
                 </td>
-                <td className="max-w-xs truncate px-4 py-3 font-mono text-xs">{c.image}</td>
-                <td className="px-4 py-3">
+                <td data-label="Image" className="max-w-xs truncate px-4 py-3 font-mono text-xs">{c.image}</td>
+                <td data-label="Status" className="px-4 py-3">
                   <Badge variant={STATUS_VARIANT[c.status] ?? "unknown"}>{c.status}</Badge>
                 </td>
-                <td className="px-4 py-3">
-                  {c.health && <Badge variant={HEALTH_VARIANT[c.health] ?? "unknown"}>{c.health}</Badge>}
+                <td data-label="Health" className="px-4 py-3">
+                  {currentHealth(c) && <Badge variant={HEALTH_VARIANT[c.health ?? ""] ?? "unknown"}>{c.health}</Badge>}
                 </td>
-                <td className="px-4 py-3">{c.restart_count}</td>
-                <td className="px-4 py-3">
+                <td data-label="Restarts" className="px-4 py-3">{c.restart_count}</td>
+                <td data-label="Vulnerabilities" className="px-4 py-3">
                   {c.vulnerability_count > 0 ? (
                     <span>
                       {c.vulnerability_count}
@@ -276,7 +277,7 @@ export function HostContainersTable({ hostname }: { hostname: string }) {
                   )}
                 </td>
                 {hasRole("admin") && (
-                  <td className="px-4 py-3">
+                  <td data-label="Actions" className="px-4 py-3">
                     <div className="flex gap-1.5">
                       <Button
                         size="sm"

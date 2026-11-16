@@ -28,10 +28,25 @@ def role_at_least(role: str, minimum: str) -> bool:
     return _ROLE_RANK.get(role, -1) >= _ROLE_RANK.get(minimum, 999)
 
 
-def create_access_token(user_id: str, username: str, role: str) -> str:
+def create_access_token(user_id: str, username: str, role: str, *, sid: str | None = None,
+                        auth_time: datetime | None = None) -> str:
+    """A short-lived bearer token.
+
+    Browser tokens carry their session id (`sid`), checked on every request,
+    so logout and revocation take effect at once. A token minted without a
+    session (local administration scripts holding the API secret) is marked
+    `local` instead; tokens issued before sessions existed carry neither and
+    are refused.
+    """
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    payload = {"sub": user_id, "username": username, "role": role, "exp": expire}
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.access_token_expire_minutes)
+    payload = {"sub": user_id, "username": username, "role": role, "exp": expire, "iat": now}
+    if sid:
+        payload["sid"] = sid
+        payload["auth_time"] = int((auth_time or now).timestamp())
+    else:
+        payload["local"] = True
     return jwt.encode(payload, settings.api_secret_key, algorithm="HS256")
 
 

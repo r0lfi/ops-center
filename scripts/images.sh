@@ -8,9 +8,9 @@ ENGINE="${CONTAINER_ENGINE:-docker}"
 PREFIX="${IMAGE_PREFIX:-ops-center}"
 TAG="${IMAGE_TAG:-0.1.0}"
 python3 scripts/check-release.py
-components=(api frontend worker ai-worker security-worker postgres-ha)
-contexts=(backend frontend . . . ha/postgres)
-dockerfiles=(backend/Dockerfile frontend/Dockerfile worker/Dockerfile worker_ai/Dockerfile security/Dockerfile ha/postgres/Dockerfile)
+components=(api frontend worker ai-worker security-worker postgres-ha ai-traffic-collector)
+contexts=(backend frontend . . . ha/postgres ai_traffic_collector)
+dockerfiles=(backend/Dockerfile frontend/Dockerfile worker/Dockerfile worker_ai/Dockerfile security/Dockerfile ha/postgres/Dockerfile ai_traffic_collector/Dockerfile)
 case "$ACTION" in
   build)
     for i in "${!components[@]}"; do

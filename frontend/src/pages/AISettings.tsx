@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { WeeklyBudgetCard } from "@/components/ai/WeeklyBudgetCard";
 import { useEffect, useState } from "react";
 
 import { ProviderKeyDialog } from "@/components/ai/ProviderKeyDialog";
@@ -22,8 +22,7 @@ export default function AISettings() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Settings</h1>
-      <Link className="inline-block text-sm text-primary hover:underline" to="/ai-agents/collaboration/settings">Manage collaboration budgets, permissions and rules</Link>
+      <WeeklyBudgetCard />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">AI Providers</CardTitle>
@@ -38,7 +37,7 @@ export default function AISettings() {
               </div>
               <p className="text-xs text-muted-foreground">
                 {p.default_model || "no default model set"}
-                {p.kind !== "ollama" && <> - key {p.has_key ? "configured" : "not set"}</>}
+                {p.kind !== "ollama" && <> - key {p.has_key ? "configured" : p.kind === "openai_compatible" ? "optional" : "not set"}</>}
               </p>
               {isAdmin && <ProviderKeyDialog provider={p} onSaved={refresh} />}
             </div>

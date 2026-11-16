@@ -20,7 +20,7 @@
 
 ## What is Ops Center?
 
-![Ops Center — 3D Operations Floor overview](docs/images/ops-floor.gif)
+![Ops Center: the 3D Ops Floor office with example agents at work](docs/images/features/ops-floor-3d.png)
 
 **Ops Center** is an open-source, self-hosted operations platform that brings infrastructure management, automation, observability, security and AI-assisted operations into one interface.
 
@@ -33,16 +33,20 @@ Ops Center combines:
 - 🐧 Linux server management
 - 🐳 Docker workload management
 - ⚙️ Ansible automation
-- 📊 Monitoring and observability
+- 📊 Native monitoring of hosts and containers
+- 🚨 Incident management with optional AI investigations
 - 🌍 Configurable Traffic Map, persistent history and authentication alerts
-- 📱 Optional installable PWA and dedicated wallboards
+- 🛰️ AI Traffic Monitor: a passive record of what the AI layer connects to
+- 📱 Installable PWA, phone layouts and dedicated wallboards
 - 🔐 Vulnerability and security scanning
 - 🔄 Patching and scheduled operations
 - 🛡️ Optional HA / cluster deployment
-- 🤖 AI-assisted infrastructure operations
-- 🛰️ Interactive **2D and 3D Operations Floor**
-- 💬 Agent chat, task interaction and private collaboration boards
-- 📡 Optional integrations such as Nextcloud Talk and external AI providers
+- 🤖 AI agents with human approval for every change, a shared weekly budget and MCP access
+- 🧑‍💻 A Developer Agent that writes new agent tools as reviewable patches
+- 🙋 An optional personal agent with its own memory and routines
+- 🏢 Interactive **2D plan and 3D office** on the Ops Floor
+- ⌨️ `opstui`, a terminal interface for the same agents, tasks and approvals
+- 📡 Optional integrations such as Nextcloud Talk and external AI providers (Anthropic, OpenAI, Mistral, Ollama and OpenAI-compatible endpoints)
 
 > **Project status:** Ops Center is under active development. Validate it in a lab environment before using it against production infrastructure.
 
@@ -50,19 +54,50 @@ Ops Center combines:
 
 > **About the screenshots:** The images below show the standard Ops Center interface with synthetic documentation data. They contain no real deployment, accounts, hostnames, traffic or logs. Populated examples are **not installation defaults**: new installations have no managed hosts, and traffic collection and collaboration start disabled. See [screenshot coverage and reproduction](docs/screenshots.md).
 
+## What's new (November 2026)
+
+The largest update since the first public release. The sections below and the
+[changelog](CHANGELOG.md) list the details; [upgrade notes](#upgrading-to-the-november-2026-update) cover what existing installations must do.
+
+| Area | What is included | Details |
+| --- | --- | --- |
+| **Ops Floor** | One status model for every agent, a fixed 2D plan and a 3D office built from CSS, approvals and chat on the floor, external agents in their own room. | [Ops Floor](docs/ops-floor.md) |
+| **AI overview and Ask Ops AI** | Who is working right now, pending approvals answered in place, and a floating assistant that knows which page you are on. | [Ask Ops AI](docs/ask-ops-ai.md) |
+| **Investigations** | Coordinated agent investigations on a shared task board with findings, hypotheses, time and context budgets, and resumable runs. | [Agent investigations](docs/agent-investigations.md) |
+| **Read-only diagnostics** | `run_diagnostic` runs fixed, validated checks (disk, services, journal, ports, Docker, HTTP, DNS, TLS) without an approval; everything else still needs one. | [Security](docs/security.md#ai-read-only-diagnostics-run_diagnostic) |
+| **Developer Agent** | When agents miss a tool, the Developer Agent writes it as a patch. People review, approve and record the release; nothing is deployed automatically. | [Developer Agent](docs/developer-agent.md) |
+| **Incident management** | One incident per problem from alerts and monitoring, status workflow, single-notice Talk delivery and optional automatic AI investigations. | [Incident management](docs/incident-management.md) |
+| **AI Traffic Monitor** | Passive, read-only record of every connection the AI worker makes: live traffic, live map, blocked and failed, agent traces and network flow. | [AI Traffic Monitor](docs/ai-traffic-monitor.md) |
+| **Weekly AI budget** | One USD budget shared by all agents, priced per reviewed model, reserved before each call and settled afterwards. | [Agent collaboration](docs/agent-collaboration.md) |
+| **Providers** | Mistral AI and OpenAI-compatible local models, provider keys encrypted in the database, retries on provider overload. | [Mistral](docs/mistral-provider.md) |
+| **Personal agent (example: Nova)** | A private agent with memory suggestions, organised notes, imports from other assistants, routines and optional read-only calendar and Home Assistant sources. | [Personal agent](docs/nova.md) |
+| **External agents** | Agents that run elsewhere (for example in opencode) report their state and appear on the Ops Floor. | [MCP](docs/mcp.md) |
+| **Monitoring** | Native host and container monitoring from Prometheus with scoped detail pages; overview, monitoring and security numbers agree. | [Configure monitoring](#configure-your-own-monitoring) |
+| **Interface** | New menu, Ctrl+K command palette, filters in the URL, settings in tabs, one date/number format, every page usable on phones. | [Screenshots](docs/screenshots.md) |
+| **Sessions** | Access tokens only in memory, rotating HttpOnly refresh cookie, *Remember me* for 30 days, revocation and re-authentication for sensitive actions. | [Security](docs/security.md#browser-sessions-remember-me-and-re-authentication) |
+| **Terminal interface** | `opstui` (Rust/Ratatui): dashboard, agents, tasks, approvals with exact diffs, chat and the Ops Floor in a terminal. | [tui/README.md](tui/README.md) |
+
+| Ops Floor, 2D plan | AI overview |
+| --- | --- |
+| ![Ops Floor 2D plan with example agents, one pending approval and the external crew](docs/images/features/ops-floor.png) | ![AI overview with agents at work, a pending approval and live activity](docs/images/features/ai-overview.png) |
+| **AI Traffic Monitor** | **Incidents** |
+| ![AI Traffic Monitor live map with example connections](docs/images/features/ai-traffic.png) | ![Incident list with four fictional incidents](docs/images/features/incidents.png) |
+| **Developer Agent** | **Personal agent** |
+| ![Developer Agent with example tool proposals](docs/images/features/developer-agent.png) | ![Example personal agent Nova with requests to Ops Center](docs/images/features/personal-agent.png) |
+| **Command palette** | **Phone layout** |
+| ![Ctrl+K command palette searching pages](docs/images/features/command-palette.png) | <img src="docs/images/features/mobile.png" alt="Ops Floor on a phone-sized screen" width="260"> |
+
 ## MCP access and existing AI agents
 
-Ops Center now exposes **113 reviewed operational tools through standard MCP**. External assistants and the existing Ops Floor agents can use the same Streamable HTTP endpoint. Agents, conversations and the Ops Floor UI remain in place.
+Ops Center exposes **114 reviewed operational tools through standard MCP**. External assistants and the existing Ops Floor agents can use the same Streamable HTTP endpoint. Agents, conversations and the Ops Floor UI remain in place.
 
 - **Access from the start:** administrator-managed clients, permitted users, explicit tool scopes and current-role enforcement.
 - **OAuth with PKCE:** exact callbacks, resource-bound tokens, selected-tool consent, expiry, rotating refresh tokens and revocation.
 - **Human control of changes:** encrypted pending arguments, exact-payload review, idempotency and a single execution claim.
-- **Existing agent integration:** expiring grants bind an agent to a task owner; agent tool and host restrictions still apply.
+- **Existing agent integration:** expiring grants bind an agent to a task owner; agent tool and host restrictions still apply. The **MCP access** page shows, per agent and owner, which grants are active, partial or expired.
 - **Coverage:** inventory, Traffic Map, monitoring, logs, patching, security, containers, Ansible, cluster and AI operations, with policy resources and investigation prompts.
 
-The service starts disabled with **no clients or grants**. Credential material, identity administration and human approval authority remain in the authenticated UI. See [setup and security](docs/mcp.md), the [complete tool catalog](docs/mcp-tools.md), and [MCP release notes](docs/releases/2026-09-13-mcp.md). Migration **0042** and matching API, frontend and AI worker versions are required.
-
-All screenshots below show the real UI with **synthetic data only**. Example users, clients, hosts and domains have no connection to a running installation.
+The service starts disabled with **no clients or grants**. Credential material, identity administration and human approval authority remain in the authenticated UI. Agents use MCP only on the local network: the agents' MCP client refuses endpoints that resolve to public addresses. See [setup and security](docs/mcp.md), the [complete tool catalog](docs/mcp-tools.md), and [MCP release notes](docs/releases/2026-09-13-mcp.md).
 
 | External client access | Ops Floor agent access |
 | --- | --- |
@@ -70,26 +105,17 @@ All screenshots below show the real UI with **synthetic data only**. Example use
 | **OAuth consent** | **Human change approval** |
 | ![MCP consent with selected tools](docs/images/mcp-consent.png) | ![MCP exact-argument change approval](docs/images/mcp-approvals.png) |
 
-## Release highlights — portable monitoring and PWA (2026-09-13)
-
-This source update adds configurable traffic and authentication monitoring,
-an optional installable web app, and new assisted operations workflows.
+## Earlier highlights: portable monitoring and PWA (2026-09-13)
 
 | Area | What is included | Setup and details |
 | --- | --- | --- |
 | **Traffic Map** | Live observations, persistent history, source filters, timeline, country/domain summaries and a dedicated wallboard. | [Traffic Map](#traffic-map-and-authentication) |
 | **Monitoring Settings** | Your own servers, reader types, log paths, source labels, trust rules and history limits; changes apply without rebuilding. | [Configure monitoring](#configure-your-own-monitoring) |
 | **Authentication alerts** | Application, SSH and WireGuard signals, configurable trusted origins, reviewable alerts and optional administrator Talk notifications. | [Authentication rules](docs/traffic-map.md#trust-and-notification-rules) |
-| **PWA and sessions** | Optional desktop/mobile installation, iPhone/iPad help, explicit offline state, user-controlled updates and renewal of open sessions. | [Progressive Web App](#progressive-web-app) |
+| **PWA and sessions** | Optional desktop/mobile installation, iPhone/iPad help, explicit offline state and user-controlled updates. | [Progressive Web App](#progressive-web-app) |
 | **Agent collaboration** | Owner-private investigations with permitted helpers, diagnostic tools, editable rules, budgets and stop controls. | [Collaboration](#agent-collaboration) |
 | **Disk expansion** | One approved workflow for supported LVM/filesystem growth and optional verified Proxmox backing-disk growth. | [Managed disk expansion](#managed-disk-expansion) |
 | **Integration updates** | Configured HTTPS Talk delivery, approval/progress messages, authenticated wg-easy v14 access and SSH host-key checks before authentication. | [Integration and access updates](#integration-and-access-updates) |
-| **Portable distribution** | Configurable deployment defaults, separate runtime secrets, standard/HA installer support and documented migration requirements. | [Upgrading this release](#upgrading-this-release) |
-
-**Existing installations must apply migrations through `0041` and configure
-Traffic Map in Settings.** Old traffic-source and login-trust environment
-variables are not imported automatically. Read the upgrade steps before replacing
-a running installation.
 
 ---
 
@@ -97,21 +123,30 @@ a running installation.
 
 One of the core ideas behind Ops Center is to make infrastructure automation and AI agents **visible**.
 
-The Operations Floor provides a live 2D/3D representation of specialized agents working across your environment.
+The Ops Floor shows every agent at a fixed seat, with one status model shared by
+the floor, the AI overview and the agent pages: *working*, *needs approval*,
+*idle*, *paused* or *error*, plus what each agent is doing right now. Choose the
+**2D plan** (rooms, live work lines, filters) or the **3D office** (an isometric
+office built from CSS, no WebGL). Select an agent to see its current task, answer
+its approval, send it a message or stop it.
 
 | Agent | Responsibility |
 | --- | --- |
+| 🧠 **Coordinator** | Plans investigations and delegates to specialists |
 | 🐧 **Linux Ops** | Linux server health and administration |
 | 🐳 **Containers** | Docker and container workloads |
 | 📊 **Monitoring** | Metrics, alerts and infrastructure health |
 | 🔐 **Security** | Vulnerabilities and security findings |
-| 🔄 **Patching** | Patch management and scheduling |
+| 🔄 **Patching** | Patch management, with live checks of pending updates and reboot need |
 | ⚙️ **Automation** | Infrastructure automation |
 | 🌐 **Network** | Network-related operations |
-| 💬 **Chat** | User interaction |
-| 🧠 **Coordinator** | Routes requests to specialized agents |
+| 💬 **Chat** / ❓ **General** | Conversation and general operations questions |
+| 🧑‍💻 **Developer** | Writes missing agent tools as reviewable patches |
+| 🙋 **Personal agent** | Optional private assistant (the example is called *Nova*) |
+| 🛰️ **External crew** | Agents running outside Ops Center (for example in opencode) that report their state |
 
-Agents can display their current state, tasks and recent activity.
+Tool and target names of personal work are kept off the shared floor; other
+users see only that a personal agent is busy.
 
 The goal is not simply to create another dashboard. The goal is to build a **self-hosted operations workspace where humans, automation and AI agents can work together**.
 
@@ -251,15 +286,38 @@ AI functionality is optional — **Ops Center can operate without an AI provider
 
 The architecture includes a dedicated AI worker and provider integrations while keeping infrastructure execution separated into specialized workers. Bring your own provider credentials.
 
-Administrators can also enable private collaboration investigations with selected
-agents, explicit diagnostic tools and configurable budgets. Each investigation
-records questions, evidence and the lead agent's response. See
-[Agent collaboration](#agent-collaboration).
+Supported providers: Anthropic, OpenAI, Mistral, Ollama and OpenAI-compatible
+endpoints (for example a local model server). Provider keys are pasted in the UI
+and stored encrypted in the database. All agents share one **weekly USD budget**;
+calls to models without a reviewed price are refused rather than guessed.
+
+- **Approvals:** every change an agent proposes (restart, patch, playbook, disk
+  expansion, shell command) waits for a person. Read-only diagnostics from a fixed
+  catalog run without approval.
+- **Investigations:** the Coordinator plans work items on a shared task board,
+  delegates to specialists in parallel, records findings and hypotheses, and stays
+  inside its time, context and tool budgets. An interrupted run can be resumed.
+- **Developer Agent:** when agents lack a capability, it becomes a tool proposal.
+  An administrator approves it for development; the Developer Agent writes a patch
+  that a person reviews, applies with `scripts/admin/apply-tool-proposal.sh` and
+  records as released. Nothing is deployed automatically.
+- **Ask Ops AI:** a floating assistant on every page that knows which page and
+  object you are looking at.
+- **Memory:** shared and per-agent notes, suggestions the owner accepts or rejects,
+  and an optional import of Claude Code memory files.
+- **Personal agent:** an optional private agent (the example is called *Nova*)
+  with its own memory, routines and read-only calendar/Home Assistant sources. It
+  has no infrastructure tools; it asks the Coordinator, and changes still need
+  approval. See [docs/nova.md](docs/nova.md).
+- **External agents:** agents that run elsewhere register with `runtime:
+  "external"`, report their state and appear on the Ops Floor.
+- **Collaboration:** private investigations with selected agents, explicit
+  diagnostic tools and configurable limits. See [Agent collaboration](#agent-collaboration).
 
 <details>
 <summary>Screenshot: specialist agents</summary>
 
-![Six example specialist agents with configured responsibilities](docs/images/features/agents.png)
+![Example specialist agents with configured responsibilities](docs/images/features/agents.png)
 
 Agent responsibilities, status, model settings and allowed tools, using a fictional provider.
 
@@ -537,6 +595,7 @@ than a single image:
 | `ghcr.io/r0lfi/ops-center/ai-worker` | Optional AI agent execution |
 | `ghcr.io/r0lfi/ops-center/security-worker` | Security scanning and Docker operations |
 | `ghcr.io/r0lfi/ops-center/postgres-ha` | PostgreSQL 17 + Patroni, only for the optional HA deployment |
+| `ghcr.io/r0lfi/ops-center/ai-traffic-collector` | Optional passive AI Traffic Monitor collector (Compose profile `ai-traffic`) |
 
 PostgreSQL, Redis, Caddy, Prometheus, Grafana, Loki, Alertmanager, Trivy and the
 Blackbox exporter run from their official upstream images, pinned in
@@ -719,6 +778,11 @@ See:
 - [PWA behavior and deployment](docs/pwa.md)
 - [Agent collaboration](docs/agent-collaboration.md)
 - [Managed disk expansion](docs/disk-expansion.md)
+- [Incident management](docs/incident-management.md)
+- [AI Traffic Monitor](docs/ai-traffic-monitor.md)
+- [Agent investigations](docs/agent-investigations.md) and [Developer Agent](docs/developer-agent.md)
+- [Personal agent](docs/nova.md) and [agent memory](docs/agent-memory.md)
+- [Mistral provider](docs/mistral-provider.md)
 - [Integrations](docs/integrations.md)
 - [Security](docs/security.md)
 - [Operations](docs/operations.md)
@@ -735,6 +799,8 @@ ops-center/
 ├── worker/            Ansible execution and scheduler
 ├── worker_ai/         AI agents, providers and tools
 ├── security/          Security and Docker operations
+├── ai_traffic_collector/  Passive AI Traffic Monitor collector (Rust)
+├── tui/               opstui terminal interface (Rust/Ratatui)
 ├── ansible/           Infrastructure automation
 ├── deploy/            Standard + HA Ansible deployment
 ├── ha/                HA PostgreSQL/Patroni image and supporting files
@@ -742,6 +808,7 @@ ops-center/
 ├── proxy/             Caddy reverse proxy
 ├── scripts/ha/        Portable HA topology/config generator
 ├── scripts/           Installation, testing and packaging tools
+├── scripts/admin/     Apply an approved tool proposal; import Claude Code memory
 ├── docs/              Documentation including HA deployment
 └── .github/workflows/ GitHub Actions
 ```
@@ -763,8 +830,12 @@ cd ..
 bash scripts/test/run-tests.sh
 ```
 
-CI validates both the standard installer and HA installer Ansible syntax and
-builds every application image on each push and pull request.
+The Rust components build and test in a container, so no local toolchain is
+needed: `tui/install.sh check` for opstui, and the collector's image build runs
+its tests (`docker build ai_traffic_collector`).
+
+CI validates both the standard installer and HA installer Ansible syntax, checks
+and tests opstui, and builds every application image on each push and pull request.
 
 To run the whole stack from a set of images, with health, web interface, login
 and persistence checks, use `scripts/test/smoke-stack.sh`
@@ -838,6 +909,19 @@ Before production use:
 - [x] Owner-private agent collaboration with permissions and budgets
 - [x] Single-approval managed disk expansion
 - [x] Authenticated wg-easy v14 integration
+- [x] Ops Floor 2D plan and 3D office with one status model
+- [x] Incident management with optional AI investigations
+- [x] Coordinated investigations on a shared task board
+- [x] Developer Agent with human review of every patch
+- [x] Weekly AI budget across all agents
+- [x] AI Traffic Monitor
+- [x] Native host and container monitoring
+- [x] Personal agent with memory, imports and routines
+- [x] External agents on the Ops Floor
+- [x] Command palette and phone layouts
+- [x] Remembered sessions with rotating refresh cookies
+- [x] Terminal interface (opstui)
+- [x] Prebuilt container releases
 
 ### Planned / evolving
 
@@ -847,13 +931,11 @@ Before production use:
 - [ ] Kubernetes integration
 - [ ] Improved container management
 - [ ] GPU infrastructure monitoring
-- [ ] Better Operations Floor visualization
 - [ ] Dedicated HA monitoring / shared observability storage
 - [ ] More automation workflows
 - [ ] Broader role-based agent access beyond existing action and collaboration controls
 - [ ] Multi-user improvements
 - [ ] Easier deployment and upgrades
-- [ ] Prebuilt container releases
 
 Ideas and contributions are welcome.
 
@@ -1090,7 +1172,40 @@ Example peer status, handshake ages and transfer counters. The capture has no VP
 
 </details>
 
-## Upgrading this release
+## Upgrading to the November 2026 update
+
+1. Back up the database, `DATA_ROOT/secrets` and `.env` (see
+   [operations](docs/operations.md)). Database migrations cannot be undone by
+   going back to older images.
+2. Update the checkout and use matching versions of every image. The API applies
+   migrations **`0043`–`0066`** on start: incidents, weekly AI budget, usage
+   reservation, read-only diagnostics, native monitoring inventory, external and
+   personal agents, memory suggestions/imports/organisation, routines, Mistral,
+   encrypted provider keys, the agent task board, AI Traffic Monitor tables,
+   browser sessions, change reviews, budget settings and patching live checks.
+   Migrations `0049` and `0050` create tables for features that were later
+   removed; they are kept only so the migration chain stays intact.
+3. **Everyone signs in once.** Migration `0063` introduces server-side sessions;
+   tokens issued before it are refused. Access tokens now last 15 minutes and are
+   renewed through an HttpOnly cookie. Browsers reach Ops Center over HTTPS, or
+   over `http://localhost`/`127.0.0.1` through a tunnel. If they use plain HTTP
+   on any other address, set `SESSION_COOKIE_SECURE=false` in `.env`.
+4. **Provider keys** saved earlier as files keep working; save them once on the
+   **AI Agents** page to store them encrypted in the database, which every HA
+   node can read. Rotating `API_SECRET_KEY` makes stored keys unreadable.
+5. **AI budget:** set the weekly limit under **Settings → AI & budget**. Calls to
+   models without a reviewed price are refused.
+6. **Optional services:** the AI Traffic Monitor collector runs only with
+   `docker compose --profile ai-traffic up -d` and needs
+   `AI_TRAFFIC_INGEST_TOKEN` (API) and a per-node `AI_TRAFFIC_COLLECTOR_TOKEN`
+   (see [`.env.example`](.env.example) and [AI Traffic Monitor](docs/ai-traffic-monitor.md)).
+   The personal agent's calendar and Home Assistant sources are configured with
+   `NOVA_DATA_SOURCES` ([docs/nova.md](docs/nova.md)).
+7. Automatic incident investigations are off by default and the personal agent
+   starts disabled. The Developer Agent only runs when an administrator approves
+   a tool proposal for development.
+
+## Upgrading from releases before September 2026
 
 1. Back up the database, runtime secrets and deployment configuration. Record
    current traffic-source servers, IDs, paths and trust rules, and retain the

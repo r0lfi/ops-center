@@ -16,6 +16,11 @@ export interface StationDefinition {
   color: string;
   /** No backend agent exists for this slug yet - shown inert/dimmed. */
   placeholder?: boolean;
+  /** Runs outside Ops Center (an external runtime such as opencode, runtime "external")
+   * and only reports its state. The Ops Center Coordinator never routes to
+   * it: no coordinator line or gathering, no desk in the 3D room - the 3D
+   * view shows it on the opencode wall board instead. */
+  remote?: boolean;
 }
 
 export interface AgentVisual {
@@ -62,6 +67,14 @@ export const STATIONS: StationDefinition[] = [
   // main grid (3x3 around the coordinator) is fully packed, this is the
   // only clear pocket of floor left for a 10th desk.
   { slug: "chat", label: "Chat", x: 2, y: 67, color: "#F05CFF" },
+  // Mirrors Chat on the right-hand side, below Patching and outside
+  // Automation's zone - the owner's personal agent.
+  { slug: "nova", label: "Nova", x: 95, y: 70, color: "#B8F25C" },
+  // an external runtime such as opencode: grouped top-left beside the live panel.
+  { slug: "ext-coordinator", label: "External Coordinator", x: 8, y: 8, color: "#F2E3C2", remote: true },
+  { slug: "ext-coder", label: "External Coder", x: 23, y: 8, color: "#FF9F80", remote: true },
+  { slug: "ext-reader", label: "External Reader", x: 8, y: 21, color: "#8FA8FF", remote: true },
+  { slug: "ext-reviewer", label: "External Reviewer", x: 23, y: 21, color: "#D9A3FF", remote: true },
 ];
 
 export const REAL_AGENT_SLUGS = STATIONS.filter((s) => !s.placeholder).map((s) => s.slug);

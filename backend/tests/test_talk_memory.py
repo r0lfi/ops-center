@@ -16,7 +16,7 @@ BINDING = TalkMemoryBinding(actor_id='users/example-user',room_token='private',u
 
 
 def test_binding_requires_exact_signed_identity_and_room():
-    with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[BINDING])):
+    with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[BINDING],talk_agent_routes=[])):
         assert bound_user_id('users/example-user','private') == OWNER
         assert bound_user_id('guests/example-user','private') is None
         assert bound_user_id('users/other','private') is None
@@ -24,7 +24,7 @@ def test_binding_requires_exact_signed_identity_and_room():
         task=SimpleNamespace(owner_user_id=OWNER,requested_by='talk:users/example-user',conversation_key='talk:private')
         assert task_binding_valid(task)
         task.owner_user_id=uuid.uuid4(); assert not task_binding_valid(task)
-    with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[])):
+    with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[],talk_agent_routes=[])):
         assert bound_user_id('users/example-user','private') is None
 
 
@@ -38,7 +38,7 @@ def test_signed_webhook_binds_owner_but_never_display_name():
         request=Request({'type':'http','headers':[(b'x-nextcloud-talk-random',random.encode()),(b'x-nextcloud-talk-signature',sig.encode()),(b'x-nextcloud-talk-backend',b'https://test')]},receive)
         db=MagicMock();db.execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda:SimpleNamespace(id=uuid.uuid4(),enabled=True)))
         db.get=AsyncMock(side_effect=lambda model,key: SimpleNamespace(id=OWNER,is_active=True) if model.__name__=="User" else None);db.commit=AsyncMock();db.refresh=AsyncMock()
-        with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[BINDING])),patch('app.api.routes.integrations._talk_secret',return_value='test-only'),patch('app.api.routes.integrations.get_celery_client'),patch('app.api.routes.integrations._reply',new_callable=AsyncMock):
+        with patch('app.core.talk_memory.get_settings',return_value=SimpleNamespace(talk_memory_bindings=[BINDING],talk_agent_routes=[])),patch('app.api.routes.integrations._talk_secret',return_value='test-only'),patch('app.api.routes.integrations.get_celery_client'),patch('app.api.routes.integrations._reply',new_callable=AsyncMock):
             if not valid:
                 try: await talk_webhook(request,db)
                 except HTTPException as exc: assert exc.status_code==401

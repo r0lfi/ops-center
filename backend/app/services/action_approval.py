@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.models.ai import AIAction, AITask
 from app.models.audit import AuditLogEntry
 from app.core.action_policy import validate_decision, ActionDenied
+from app.core.incident_tasks import incident_task_authorized
 from app.services.celery_client import get_celery_client
 
 
@@ -27,6 +28,12 @@ async def decide_action(
     if action is None:
         raise ActionDenied("Fant ikke godkjenningskoden.", 404)
     parent = await db.get(AITask, action.task_id) if action.task_id else None
+    if getattr(action, "source", None) == "incident" or getattr(parent, "source", None) == "incident":
+        if (parent is None or not user or parent.owner_user_id != user.id
+                or action.owner_user_id != user.id):
+            raise ActionDenied("Action not found.", 404)
+        if approve and not await db.run_sync(lambda session: incident_task_authorized(session, parent)):
+            raise ActionDenied("Incident investigation authorization was revoked or the incident is no longer active.", 403)
     validate_decision(action, parent, user, actor_id=actor_id, room_token=room_token)
     action.status = "approved" if approve else "rejected"
     action.approved_by = user.username

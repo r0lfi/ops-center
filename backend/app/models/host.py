@@ -167,6 +167,7 @@ class Host(Base):
     # Docker Hosts). Doesn't change how the host is otherwise managed - a
     # plain flag, not a new host type.
     is_docker_host: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    container_inventory_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     ssh_host_fingerprint: Mapped[str | None] = mapped_column(Text)
     reboot_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

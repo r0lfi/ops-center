@@ -34,6 +34,8 @@ class Container(Base):
     restart_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    runtime_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    monitoring_metadata: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class Stack(Base):

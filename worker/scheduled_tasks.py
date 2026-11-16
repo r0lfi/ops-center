@@ -1,6 +1,7 @@
 import json
 import logging
 import socket
+import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -8,10 +9,10 @@ from zoneinfo import ZoneInfo
 
 from croniter import croniter
 from app.core.config import get_settings
-from sqlalchemy import or_, select, update
+from sqlalchemy import bindparam, func, or_, select, text, update
 
 from app.models.host import GROUP_PATCH_PLAYBOOKS, GROUP_PATCH_TYPES, Host, HostGroup
-from app.models.job import AnsibleJob
+from app.models.job import PATCH_PLAYBOOKS, AnsibleJob
 from app.models.monitoring import MonitoringCheck
 from worker.celery_app import celery_app
 from worker.db import SessionLocal
@@ -295,5 +296,143 @@ def run_scheduled_patch_groups() -> None:
             db.commit()
 
             run_playbook.delay(str(job.id), [str(h.id) for h in hosts], playbook, None, extra_vars)
+    finally:
+        db.close()
+
+
+_PRUNE_BATCH_ROWS = 5000
+_PRUNE_BATCH_PAUSE_SECONDS = 0.2
+_PRUNE_BUDGET_SECONDS = 600  # Keeps WAL volume and replication lag in check.
+
+_PRUNE_DOCKER_EVENTS = text(
+    """
+    DELETE FROM docker_events WHERE id IN (
+        SELECT id FROM docker_events
+        WHERE hostname = :hostname AND occurred_at < :cutoff
+        ORDER BY occurred_at LIMIT :limit
+    )
+    """
+)
+_PRUNE_ANSIBLE_EVENTS = text(
+    """
+    DELETE FROM ansible_events WHERE id IN (
+        SELECT e.id FROM ansible_events e JOIN ansible_jobs j ON j.id = e.job_id
+        WHERE e.created_at < :cutoff AND j.playbook NOT IN :keep
+        LIMIT :limit
+    )
+    """
+).bindparams(bindparam("keep", expanding=True))
+# A loose index scan: finds the few hostnames without reading 30M+ rows.
+_DOCKER_EVENT_HOSTNAMES = text(
+    """
+    WITH RECURSIVE h(name) AS (
+        SELECT min(hostname) FROM docker_events
+        UNION ALL
+        SELECT (SELECT min(hostname) FROM docker_events WHERE hostname > h.name)
+        FROM h WHERE h.name IS NOT NULL
+    )
+    SELECT name FROM h WHERE name IS NOT NULL
+    """
+)
+
+
+def _prune_in_batches(db, statement, params: dict, deadline: float) -> int:
+    """Short transactions, so replication and normal writes keep up. An
+    unfinished table simply continues on the next hourly run."""
+    removed = 0
+    while time.monotonic() < deadline:
+        count = db.execute(statement, {**params, "limit": _PRUNE_BATCH_ROWS}).rowcount
+        db.commit()
+        removed += count
+        if count < _PRUNE_BATCH_ROWS:
+            break
+        time.sleep(_PRUNE_BATCH_PAUSE_SECONDS)
+    return removed
+
+
+@celery_app.task(name="worker.scheduled_tasks.prune_event_tables")
+def prune_event_tables() -> None:
+    """Enforce event_retention_days on the two unbounded event tables, except
+    patch jobs' events: they are the patch history. Beat fires this once an
+    hour; the batched deletes are also safe if two overlap."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=get_settings().event_retention_days)
+    deadline = time.monotonic() + _PRUNE_BUDGET_SECONDS
+    db = SessionLocal()
+    try:
+        removed = 0
+        for hostname in db.execute(_DOCKER_EVENT_HOSTNAMES).scalars().all():
+            removed += _prune_in_batches(
+                db, _PRUNE_DOCKER_EVENTS, {"hostname": hostname, "cutoff": cutoff}, deadline
+            )
+        removed_ansible = _prune_in_batches(
+            db, _PRUNE_ANSIBLE_EVENTS, {"cutoff": cutoff, "keep": list(PATCH_PLAYBOOKS)}, deadline
+        )
+        _logger.info("Pruned %s docker_events and %s ansible_events rows", removed, removed_ansible)
+    finally:
+        db.close()
+
+
+_PRUNE_AI_TRAFFIC_EVENTS = text(
+    "DELETE FROM ai_traffic_events WHERE id IN "
+    "(SELECT id FROM ai_traffic_events WHERE ts < :cutoff ORDER BY ts LIMIT :limit)"
+)
+_PRUNE_AI_TRACE_SPANS = text(
+    "DELETE FROM ai_trace_spans WHERE span_id IN "
+    "(SELECT span_id FROM ai_trace_spans WHERE started_at < :cutoff ORDER BY started_at LIMIT :limit)"
+)
+
+
+@celery_app.task(name="worker.scheduled_tasks.prune_ai_traffic")
+def prune_ai_traffic() -> None:
+    """AI Traffic Monitor: enforce its own retention (ai_traffic_settings),
+    delete PCAPs past their expiry and forget per-process telemetry counters
+    of worker processes that stopped reporting a day ago."""
+    deadline = time.monotonic() + _PRUNE_BUDGET_SECONDS
+    db = SessionLocal()
+    try:
+        days = db.execute(text("SELECT retention_days FROM ai_traffic_settings WHERE id = 1")).scalar() or 30
+        cutoff = datetime.now(timezone.utc) - timedelta(days=int(days))
+        events = _prune_in_batches(db, _PRUNE_AI_TRAFFIC_EVENTS, {"cutoff": cutoff}, deadline)
+        spans = _prune_in_batches(db, _PRUNE_AI_TRACE_SPANS, {"cutoff": cutoff}, deadline)
+        captures = db.execute(text(
+            "DELETE FROM ai_traffic_captures WHERE expires_at < now() "
+            "OR (status IN ('pending', 'running') AND requested_at < now() - interval '1 hour')")).rowcount
+        db.execute(text(
+            "UPDATE ai_traffic_sources SET stats = jsonb_set(stats, '{processes}', coalesce(("
+            "  SELECT jsonb_object_agg(k, v) FROM jsonb_each(stats->'processes') AS p(k, v) "
+            "  WHERE (v->>'ts')::float8 > extract(epoch FROM now()) - 86400), '{}'::jsonb)) "
+            "WHERE kind = 'app' AND stats ? 'processes'"))
+        db.commit()
+        _logger.info("Pruned %s AI traffic events, %s spans, %s captures", events, spans, captures)
+    finally:
+        db.close()
+
+
+@celery_app.task(name="worker.scheduled_tasks.reap_orphaned_jobs")
+def reap_orphaned_jobs() -> None:
+    """A worker that dies mid-job (restart, failover, full disk) never records
+    an outcome, so its row stayed queued or running forever and looked active
+    in the UI. Report what is actually known: the job did not finish under
+    our control. "cancelled" rather than "failed" because patch reports treat
+    it as an unknown outcome, and the playbook may well have completed.
+
+    A queued job reaped here will not start later: run_playbook refuses to claim
+    it. A job that really is still running after this long is left alone and
+    records its real outcome when it ends; aborting a patch run mid-way because
+    of its age would be worse than a temporarily wrong status."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=get_settings().orphaned_job_after_hours)
+    db = SessionLocal()
+    try:
+        reaped = db.execute(
+            update(AnsibleJob)
+            .where(
+                AnsibleJob.status.in_(("queued", "running")),
+                func.coalesce(AnsibleJob.started_at, AnsibleJob.created_at) < cutoff,
+            )
+            .values(status="cancelled", finished_at=datetime.now(timezone.utc))
+        ).rowcount
+        db.commit()
+        if reaped:
+            _logger.warning("Marked %s orphaned Ansible jobs as cancelled", reaped)
     finally:
         db.close()

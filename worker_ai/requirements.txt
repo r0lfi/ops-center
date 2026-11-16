@@ -1,13 +1,20 @@
 celery==5.4.0
+# Celery leaves this open, and kombu 5.7 requires a newer redis-py than the one below.
+kombu==5.6.2
 redis==5.2.1
 sqlalchemy==2.0.52
 psycopg[binary]==3.3.4
 pydantic-settings==2.15.0
+# Cron schedules of nova routines (app/core/nova_routines.py), same pin as the backend.
+croniter==6.0.0
 
 # Plain httpx calls to Anthropic/OpenAI/Ollama's REST APIs - no provider
 # SDKs, matching the rest of the app's "raw httpx proxy" convention
 # (app/api/routes/metrics.py, logs.py, alerts.py all do the same).
 httpx==0.28.1
+
+# Decrypts AI provider keys stored in the database (app/core/provider_keys.py), same pin as the backend.
+cryptography==50.0.1
 
 # Standard MCP client for the shared operational tool broker.
 mcp==2.2.0

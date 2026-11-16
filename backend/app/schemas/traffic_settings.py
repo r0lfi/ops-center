@@ -5,6 +5,7 @@ refer to managed Host records; this API never accepts credentials or commands.
 """
 
 import re
+import ipaddress
 from typing import Literal
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -88,10 +89,16 @@ class TrafficSettingsConfig(BaseModel):
     enabled: bool = False
     sources: list[TrafficSourceConfig] = Field(default_factory=list, max_length=32)
     allowed_countries: list[str] = Field(default_factory=list, max_length=50)
+    trusted_ips: list[str] = Field(default_factory=list, max_length=100)
     trusted_dns: list[str] = Field(default_factory=list, max_length=8)
     retention_days: int = Field(default=30, ge=1, le=365)
     max_rows: int = Field(default=500000, ge=1000, le=5000000)
     notify_authentication: bool = True
+
+    @field_validator("trusted_ips")
+    @classmethod
+    def validate_ips(cls, values):
+        return list(dict.fromkeys(str(ipaddress.ip_address(v.strip())) for v in values))
 
     @field_validator("trusted_dns")
     @classmethod

@@ -26,11 +26,20 @@ collection and agent collaboration start disabled.
 | Collaboration settings | [collaboration-settings.png](images/features/collaboration-settings.png) | Budgets and explicit partner permissions |
 | Disk expansion | [disk-expansion.png](images/features/disk-expansion.png) | Pending approval for a fictional storage request |
 | VPN integration | [vpn.png](images/features/vpn.png) | Fictional peer status and transfer counters |
+| Ops Floor (2D plan) | [ops-floor.png](images/features/ops-floor.png) | Agent rooms, live status, a pending approval and the external crew |
+| Ops Floor (3D office) | [ops-floor-3d.png](images/features/ops-floor-3d.png) | The same agents at their desks in the isometric office |
+| AI overview | [ai-overview.png](images/features/ai-overview.png) | Agents at work, pending approval and live activity |
+| AI Traffic Monitor | [ai-traffic.png](images/features/ai-traffic.png) | Live map of example model, API and internal connections |
+| Incidents | [incidents.png](images/features/incidents.png) | Four fictional incidents in different states |
+| Developer Agent | [developer-agent.png](images/features/developer-agent.png) | Tool proposals in progress, ready for review and approved |
+| Personal agent | [personal-agent.png](images/features/personal-agent.png) | The example personal agent "Nova" and its requests |
+| Command palette | [command-palette.png](images/features/command-palette.png) | Ctrl+K search across pages |
+| Phone layout | [mobile.png](images/features/mobile.png) | Ops Floor on a phone-sized screen |
 | PWA installation | [pwa-install.png](images/features/pwa-install.png) | In-app iPhone/iPad installation help |
 | Offline protection | [pwa-offline.png](images/features/pwa-offline.png) | Overlay hiding stale infrastructure data |
 
-The existing [Operations Floor illustration](images/ops-floor.gif) remains in the
-README separately from these screenshots.
+The earlier animated Operations Floor illustration showed a 3D scene that has
+since been replaced and is no longer included.
 
 ## Data and capture boundaries
 
@@ -44,7 +53,8 @@ README separately from these screenshots.
   the frontend build and the public `health-check.yml` playbook. It does not load
   environment files, connect to a backend, authenticate to a deployment, contact
   AI providers or execute infrastructure operations. Unmapped API requests fail
-  the capture, and non-GET requests are rejected.
+  the capture, and non-GET requests are rejected, except session renewal
+  (`POST /api/auth/refresh`), which returns a placeholder token kept in memory.
 - Browser traffic is limited to the fixture origin and the standard world-map
   tiles used by the application. The map includes © OpenStreetMap attribution.
   Only generic zoom-2 tile coordinates are requested; no example observations
@@ -66,7 +76,7 @@ npx playwright install chromium
 node scripts/capture-readme.mjs
 ```
 
-The script writes the 19 PNG files to `docs/images/features`. To refresh only
+The script writes the 28 PNG files to `docs/images/features`. To refresh only
 selected views, pass their filename stems:
 
 ```bash

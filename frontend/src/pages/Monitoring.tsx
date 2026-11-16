@@ -1,6 +1,7 @@
 import { ExternalLink, LayoutGrid } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { FleetMetricsGrid } from "@/components/monitoring/FleetMetricsGrid";
 import { ServicesSection } from "@/components/monitoring/ServicesSection";
 import { Button } from "@/components/ui/button";
@@ -19,15 +20,14 @@ const DASHBOARDS = [
 export default function Monitoring() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Monitoring</h1>
+      <PageHeader title="Monitoring" actions={
         <Link to="/wallboard">
           <Button variant="outline">
             <LayoutGrid className="mr-1.5 h-4 w-4" />
             Open Wallboard
           </Button>
         </Link>
-      </div>
+      } />
 
       <ServicesSection />
       <FleetMetricsGrid />

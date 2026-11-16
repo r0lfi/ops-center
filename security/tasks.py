@@ -1,4 +1,5 @@
 import json
+import uuid
 import os
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ import docker
 from sqlalchemy import select
 
 from app.models.container import Container
+from app.services.container_inventory import monitoring_metadata, runtime_id, runtime_stats
 from app.models.host import Host
 from app.models.vulnerability import ContainerVulnerability, HostVulnerability
 from security import docker_control
@@ -184,6 +186,10 @@ def sync_container_status() -> None:
     db = SessionLocal()
     try:
         client = _docker()
+        try:
+            snapshots = docker_control.inventory_stats()
+        except (ValueError, OSError, subprocess.TimeoutExpired):
+            snapshots = []
         seen_names = set()
         for c in client.containers.list(all=True):
             try:
@@ -217,16 +223,23 @@ def sync_container_status() -> None:
             row.status = c.status
             row.health = health
             row.restart_count = restart_count
+            if row.runtime_id and row.runtime_id != runtime_id(c.attrs):
+                row.id = uuid.uuid4()
+            row.runtime_id = runtime_id(c.attrs)
+            row.monitoring_metadata = monitoring_metadata(c.attrs)
+            row.monitoring_metadata["runtime_stats"] = runtime_stats(row.runtime_id, snapshots)
             row.last_seen = _now()
         # Containers removed since the last sync shouldn't linger forever.
-        if seen_names:
-            stale = db.execute(
-                select(Container).where(
-                    Container.hostname == LOCAL_HOSTNAME, Container.name.not_in(seen_names)
-                )
-            ).scalars().all()
-            for row in stale:
-                db.delete(row)
+        stale = db.execute(
+            select(Container).where(
+                Container.hostname == LOCAL_HOSTNAME, Container.name.not_in(seen_names)
+            )
+        ).scalars().all()
+        for row in stale:
+            db.delete(row)
+        host = db.execute(select(Host).where(Host.hostname == LOCAL_HOSTNAME)).scalar_one_or_none()
+        if host is not None:
+            host.container_inventory_at = _now()
         db.commit()
     finally:
         db.close()
@@ -293,8 +306,8 @@ def list_volumes() -> list[dict]:
 
 
 @celery_app.task(name="security.tasks.container_logs")
-def container_logs(name: str, tail: int) -> dict:
-    return docker_control.container_logs(name, tail)
+def container_logs(name: str, tail: int, options: dict | None = None) -> dict:
+    return docker_control.container_logs(name, tail, options)
 
 
 @celery_app.task(name="security.tasks.container_stats")

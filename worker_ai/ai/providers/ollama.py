@@ -5,8 +5,11 @@ from worker_ai.ai.providers.base import AIProvider, ProviderError, ProviderResul
 
 
 class OllamaProvider(AIProvider):
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, num_ctx: int = 0):
         self._base_url = base_url.rstrip("/")
+        # Without num_ctx Ollama uses its server default and silently drops
+        # the start of longer prompts (system prompt, notes, history).
+        self._num_ctx = num_ctx
 
     def chat(
         self, *, system: str, messages: list[dict], tools: list[dict], model: str, max_tokens: int = 4096
@@ -23,10 +26,12 @@ class OllamaProvider(AIProvider):
                     "model": model,
                     "messages": wire_messages,
                     "stream": False,
-                    "options": {"num_predict": max_tokens},
+                    "options": {"num_predict": max_tokens, **({"num_ctx": self._num_ctx} if self._num_ctx else {})},
                     **({"tools": ollama_tools} if ollama_tools else {}),
                 },
-                timeout=120.0,
+                # A local model can need minutes for one long answer, as for OpenAICompatibleProvider;
+                # the agent or background-job deadline (transport.DEADLINE) still caps it.
+                timeout=600.0,
             )
             resp.raise_for_status()
             data = resp.json()

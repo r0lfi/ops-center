@@ -4,7 +4,7 @@ Ops Center exposes reviewed operational tools through the Model Context Protocol
 
 ## What is available
 
-The reviewed catalog contains 113 operational tools covering inventory and host groups, services, monitoring, alerts, logs, Traffic Map and authentication observations, patching and reports, vulnerabilities, containers and stacks, Ansible, VPN peer administration, cluster status and switchover, app templates, AI agents, tasks, findings, memory and collaboration boards. Each tool has a JSON input schema, a domain scope and a minimum role. The existing API remains the business implementation.
+The reviewed catalog contains 114 operational tools covering inventory and host groups, services, monitoring, alerts, logs, Traffic Map and authentication observations, patching and reports, vulnerabilities, containers and stacks, Ansible, VPN peer administration, cluster status and switchover, app templates, AI agents, tasks, findings, memory and collaboration boards. Each tool has a JSON input schema, a domain scope and a minimum role. The existing API remains the business implementation.
 
 See [the complete tool catalog](mcp-tools.md) for exact operations, required roles and deliberate exclusions. New API routes do not become MCP tools automatically.
 
@@ -109,11 +109,21 @@ Effective access is the intersection of the current user's role, the client tool
 
 All non-GET operations create a pending change request. The caller supplies a stable `idempotency_key`. Repeating the same request returns its existing status; reusing that key for different arguments is rejected.
 
-The authorizing user or an administrator must review the exact arguments in the authenticated web UI. The deciding user needs at least the operation's required role. Neither an MCP client nor a model can call the decision endpoint or impersonate a human by writing approval text. Native AIAction approvals also remain human-only.
+The authorizing user or an administrator must review the exact arguments in the authenticated web UI, unless the tool is pre-approved for that client (below). The deciding user needs at least the operation's required role. Neither an MCP client nor a model can call the decision endpoint or impersonate a human by writing approval text. Native AIAction approvals also remain human-only.
 
 Pending arguments are encrypted using a key derived from the deployment's existing API secret and bound to a SHA-256 digest. A database lock and committed execution claim prevent concurrent approval from executing twice. The business API runs with the original user's current identity and existing route permissions.
 
 A process failure, timeout or server error after execution starts can leave an **unknown** outcome. Inspect the request and the underlying job/system before creating another request. There is no automatic execution retry. A 2xx result can mean a background job was accepted; inspect its job ID for actual completion.
+
+## Pre-approved AI task tools
+
+An administrator can pre-approve a fixed, small set of AI task tools for one external client in **MCP access → External clients**: `ops_ask_ops_ai` (start an agent task), `ops_cancel_task` and `ops_report_agent_status`. The set is enforced in code (`app.mcp.catalog.AUTO_APPROVABLE`); infrastructure, credential, access and configuration writes can never be pre-approved. Ops Floor agent grants never use pre-approval.
+
+A pre-approved call still creates the change request, runs through the same decision path as a human approval (role, client, consent, grant and argument digest are checked again) and records an `auto_approved` audit event before `executing`. The decision is attributed to the authorizing user. The agent work it starts keeps its own budgets and AIAction approvals: every change that work proposes still waits for a human.
+
+## External agents
+
+Agents created with `runtime: "external"` run outside Ops Center (for example opencode sessions on an admin host). The AI worker never executes them, the Coordinator cannot dispatch to them and `/api/ai/ask` rejects them. They appear on the Agents page and the Ops Floor and update their state through `POST /api/ai/agents/{agent_id}/report` (`ops_report_agent_status`), which only accepts external, enabled agents. On the Ops Floor the opencode agents (`ext-coordinator`, `ext-coder`, `ext-reader`, `ext-reviewer`) form their own group in the 2D view, without Coordinator links, and appear on the opencode board on the left wall of the 3D room; their details panel offers no chat. Another external agent needs a `remote` station entry in `frontend/src/lib/opsFloorTypes.ts` before it is drawn.
 
 ## Audit, limits and retention
 

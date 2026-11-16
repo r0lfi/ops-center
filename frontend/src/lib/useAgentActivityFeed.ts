@@ -15,7 +15,7 @@ export interface ActivityEntry {
 const MAX_ENTRIES = 30;
 
 /**
- * Same /api/ai/agents/stream SSE the Ops Floor uses (see opsFloorEvents.ts),
+ * Same /api/ai/agents/stream SSE the Ops Floor uses (see opsFloor/useOpsFloorData.ts),
  * consumed here as a plain chronological log instead of driving 3D
  * position/state - powers the AI Agents page's Live Activity feed.
  */

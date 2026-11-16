@@ -17,6 +17,7 @@ export default function Login() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -25,7 +26,7 @@ export default function Login() {
     setSubmitting(true);
     setError(null);
     try {
-      await login(username, password);
+      await login(username, password, remember);
       const from = location.state?.from;
       navigate(from ? from.pathname + from.search + from.hash : "/", { replace: true });
     } catch {
@@ -66,6 +67,13 @@ export default function Login() {
                 required
               />
             </div>
+            <label className="flex min-h-11 cursor-pointer items-start gap-2.5 text-sm">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[hsl(var(--primary))]" checked={remember}
+                onChange={(e) => setRemember(e.target.checked)} aria-describedby="remember-help" />
+              <span>Remember me for 30 days
+                <span id="remember-help" className="block text-xs text-muted-foreground">Only on a device you trust. Sign out to end it at once.</span>
+              </span>
+            </label>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? "Signing in..." : "Sign in"}

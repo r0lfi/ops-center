@@ -11,7 +11,7 @@ from worker_ai.tasks import execute_action_task
 
 
 def test_provider_retries_explicit_503_once_and_obeys_budget():
-    token = DEADLINE.set(time.monotonic() + 10)
+    token = DEADLINE.set(time.monotonic() + 40)
     try:
         with patch(
             "worker_ai.ai.transport.httpx.post",
@@ -19,7 +19,7 @@ def test_provider_retries_explicit_503_once_and_obeys_budget():
         ) as call, patch("worker_ai.ai.transport.time.sleep"):
             assert post("https://provider", timeout=60).status_code == 200
             assert call.call_count == 2
-            assert 0 < call.call_args.kwargs["timeout"] <= 10
+            assert 0 < call.call_args.kwargs["timeout"] <= 40
     finally:
         DEADLINE.reset(token)
 
@@ -59,7 +59,7 @@ def test_tool_budget_rejects_batch_before_dispatch():
             ToolCall(id="2", name="get_alerts", arguments={}),
         ],
     )
-    with patch("worker_ai.ai.runtime.build_provider", return_value=provider), patch(
+    with patch("worker_ai.ai.runtime.reserve_usd", return_value=None), patch("worker_ai.ai.runtime.settle_usd"), patch("worker_ai.ai.runtime.build_provider", return_value=provider), patch(
         "worker_ai.ai.runtime.memory_owner", return_value=None
     ), patch("worker_ai.ai.runtime.note_context", return_value=""), patch(
         "worker_ai.ai.runtime.set_agent_state"
@@ -68,8 +68,9 @@ def test_tool_budget_rejects_batch_before_dispatch():
     ), patch(
         "worker_ai.ai.runtime._safe_read"
     ) as read:
-        with pytest.raises(TaskBudgetExceeded):
-            run_agent(db, agent, "status")
+        result = run_agent(db, agent, "status")
+        assert result.partial and "Partial investigation" in result.text
+        assert result.tools_used == []
         read.assert_not_called()
 
 
@@ -107,7 +108,7 @@ def test_worker_claims_once_before_state_commit_and_rechecks_authority():
 
     db.execute.side_effect = execute
 
-    def state(*args):
+    def state(*args, **kwargs):
         assert a.status in ("executing", "executed")
         if a.status == "executing":
             db.commit.assert_called()
@@ -173,3 +174,25 @@ def test_service_query_cannot_publish_persistent_monitoring_metrics():
     with patch("worker_ai.ai.tools.linux_tools.run_ansible_query") as query:
         get_service_status("edge-host", "httpd")
     assert query.call_args.args[2]["query_only"] is True
+
+
+def test_worker_rejects_revoked_incident_before_approved_executor():
+    now = datetime.now(timezone.utc)
+    agent = NS(enabled=True, allowed_tools=["restart_service"], allowed_hosts=[], allowed_environments=[])
+    action = NS(status="approved", source="incident", task_id="task", approved_by="owner", approval_level=2,
+        expires_at=now+timedelta(minutes=5), agent=agent, tool="restart_service", arguments={"hostname":"host"},
+        result={"approval_user_id":"owner-id"})
+    db = MagicMock()
+    def execute(query):
+        entity = query.column_descriptions[0]["entity"].__name__
+        value = action if entity == "AIAction" else ("completed" if entity == "AITask" else NS(id="owner-id", is_active=True, role="admin"))
+        return NS(scalar_one_or_none=lambda: value)
+    db.execute.side_effect = execute
+    db.get.return_value = NS(source="incident", owner_user_id="owner-id")
+    executor = MagicMock()
+    with patch("worker_ai.tasks.SessionLocal") as session, patch("app.core.incident_tasks.incident_task_authorized", return_value=False) as authority, patch("worker_ai.tasks.EXECUTORS", {"restart_service":executor}):
+        session.return_value.__enter__.return_value = db
+        execute_action_task("action")
+    authority.assert_called_once()
+    assert action.status == "expired"
+    executor.assert_not_called()

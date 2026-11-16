@@ -1,11 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { api, ApiError, getToken, renewSession, setToken, setUnauthorizedHandler, type Role, type User } from "@/lib/api";
+import {
+  api, ApiError, broadcastSession, endSession, getToken, onSessionBroadcast, renewSession, setToken,
+  setUnauthorizedHandler, type Role, type User,
+} from "@/lib/api";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, remember?: boolean) => Promise<void>;
   logout: () => void;
   hasRole: (minimum: Role) => boolean;
 }
@@ -17,65 +20,74 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generation, setGeneration] = useState(0);
 
-  const logout = useCallback(() => {
+  // Session ended elsewhere (401, another tab): forget it locally.
+  const dropSession = useCallback(() => {
     setToken(null);
     setUser(null);
   }, []);
 
-  useEffect(() => {
-    setUnauthorizedHandler(logout);
-    return () => setUnauthorizedHandler(null);
-  }, [logout]);
+  // Explicit sign-out: revoke the server session and the refresh cookie too.
+  const logout = useCallback(() => {
+    setUser(null);
+    void endSession().catch(() => { /* Local state is cleared either way. */ });
+  }, []);
 
+  useEffect(() => {
+    setUnauthorizedHandler(dropSession);
+    return () => setUnauthorizedHandler(null);
+  }, [dropSession]);
+
+  useEffect(() => onSessionBroadcast(event => {
+    if (event === "logout") dropSession();
+    if (event === "login") setGeneration(value => value + 1);
+  }), [dropSession]);
+
+  // Resume a session from the refresh cookie on every page load.
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
-      const token = getToken();
-      if (!token) { if (!stopped) setLoading(false); return; }
       try {
+        if (!getToken()) await renewSession(true);
         const me = await api.auth.me();
         if (!stopped && getToken()) { setUser(me); setLoading(false); }
       } catch (error) {
         if (stopped) return;
-        if (error instanceof ApiError && error.status === 401) {
-          if (getToken() === token || !getToken()) { logout(); setLoading(false); return; }
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          dropSession(); setLoading(false); return;
         }
-        // Retry temporary backend/network failures without deleting the saved login.
+        // Retry temporary backend/network failures; the cookie stays valid meanwhile.
         timer = setTimeout(() => void load(), 5000);
       }
     };
     void load();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [logout]);
+  }, [dropSession, generation]);
 
   useEffect(() => {
     if (!user) return;
     const keepAlive = () => {
       if (navigator.onLine) void renewSession().catch(() => { /* Retry next tick; 401 is handled centrally. */ });
     };
-    const changed = (event: StorageEvent) => {
-      if (event.key === "ops_center_token" && !event.newValue) logout();
-    };
     const timer = window.setInterval(keepAlive, 60000);
     window.addEventListener("online", keepAlive);
     document.addEventListener("visibilitychange", keepAlive);
-    window.addEventListener("storage", changed);
     keepAlive();
     return () => {
       clearInterval(timer);
       window.removeEventListener("online", keepAlive);
       document.removeEventListener("visibilitychange", keepAlive);
-      window.removeEventListener("storage", changed);
     };
-  }, [user, logout]);
+  }, [user]);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const res = await api.auth.login(username, password);
+  const login = useCallback(async (username: string, password: string, remember = false) => {
+    const res = await api.auth.login(username, password, remember);
     setToken(res.access_token);
     const me = await api.auth.me();
     setUser(me);
+    broadcastSession("login");
   }, []);
 
   const hasRole = useCallback(
@@ -101,11 +113,7 @@ export function useSessionToken(): string | null {
   useEffect(() => {
     const changed = () => update(getToken());
     window.addEventListener("ops-session-changed", changed);
-    window.addEventListener("storage", changed);
-    return () => {
-      window.removeEventListener("ops-session-changed", changed);
-      window.removeEventListener("storage", changed);
-    };
+    return () => window.removeEventListener("ops-session-changed", changed);
   }, []);
   return token;
 }

@@ -19,6 +19,7 @@ export function TrafficSettingsPanel() {
   const [config, setConfig] = useState<TrafficSettingsConfig | null>(null);
   const [hosts, setHosts] = useState<Host[]>([]);
   const [countries, setCountries] = useState("");
+  const [trustedIps, setTrustedIps] = useState("");
   const [trustedDns, setTrustedDns] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -31,6 +32,7 @@ export function TrafficSettingsPanel() {
       setHosts(servers);
       setCountries(settings.allowed_countries.join(", "));
       setTrustedDns(settings.trusted_dns.join(", "));
+      setTrustedIps((settings.trusted_ips ?? []).join(", "));
       setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not load traffic settings"); }
   }
@@ -56,7 +58,7 @@ export function TrafficSettingsPanel() {
     if (!config) return;
     setSaving(true); setError(null); setNotice(null);
     try {
-      const saved = await api.traffic.updateSettings({ ...config, allowed_countries: splitList(countries), trusted_dns: splitList(trustedDns) });
+      const saved = await api.traffic.updateSettings({ ...config, allowed_countries: splitList(countries), trusted_dns: splitList(trustedDns), trusted_ips: splitList(trustedIps) });
       setConfig(saved);
       setNotice("Settings saved. Collectors reconcile within 10 seconds; a running read may take up to 30 seconds to finish.");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not save traffic settings"); }
@@ -74,10 +76,11 @@ export function TrafficSettingsPanel() {
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-1 text-sm"><span>Trusted countries for application/VPN logins</span><Input aria-label="Trusted countries for application/VPN logins" aria-describedby="traffic-countries-help" value={countries} onChange={e => setCountries(e.target.value)} placeholder="Comma-separated English country names"/><span id="traffic-countries-help" className="block text-xs text-muted-foreground">Empty means no country exemption. Country exemptions never apply to SSH.</span></label>
           <label className="space-y-1 text-sm"><span>Trusted dynamic DNS hostnames</span><Input aria-label="Trusted dynamic DNS hostnames" aria-describedby="traffic-dns-help" value={trustedDns} onChange={e => setTrustedDns(e.target.value)} placeholder="vpn.example.com"/><span id="traffic-dns-help" className="block text-xs text-muted-foreground">Only current public A/AAAA addresses are trusted. DNS failures remove the exemption.</span></label>
+          <label className="space-y-1 text-sm"><span>Trusted IP addresses</span><Input aria-label="Trusted IP addresses" value={trustedIps} onChange={e => setTrustedIps(e.target.value)} placeholder="Comma-separated IPv4 or IPv6 addresses"/><span className="block text-xs text-muted-foreground">Explicit origin exemptions for SSH, application and VPN authentication. This does not grant login access or hide attack-pattern signals.</span></label>
           <label className="space-y-1 text-sm"><span>History retention (days)</span><Input type="number" min={1} max={365} required value={config.retention_days} onChange={e => setConfig({ ...config, retention_days: Number(e.target.value) })}/></label>
           <label className="space-y-1 text-sm"><span>Maximum saved observations</span><Input type="number" min={1000} max={5000000} required value={config.max_rows} onChange={e => setConfig({ ...config, max_rows: Number(e.target.value) })}/></label>
         </div>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.notify_authentication} onChange={e => setConfig({ ...config, notify_authentication: e.target.checked })}/> Send authentication alerts to configured administrator Talk rooms</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.notify_authentication} onChange={e => setConfig({ ...config, notify_authentication: e.target.checked })}/> Allow authentication IM notifications to Talk (also filtered by incident settings)</label>
         <p className="text-xs text-muted-foreground">Talk delivery requires a configured Talk integration and administrator room bindings. A successful login outside trusted origins has high priority. HTTP 200 alone is not proof of a login.</p>
         {config.sources.map((source, index) => <fieldset key={index} className="space-y-3 rounded-lg border border-border p-4">
           <legend className="px-2 text-sm font-medium">{source.label || `Source ${index + 1}`}</legend>

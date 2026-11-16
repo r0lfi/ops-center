@@ -13,7 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from app.db.session import async_session_factory
 from app.models.mcp import MCPRequest, MCPAudit
 from app.models.user import User
-from app.mcp.catalog import TOOLS, permitted, validate
+from app.core.incident_tasks import incident_task_authorized
+from app.mcp.catalog import TOOLS, auto_approved, permitted, validate
 from app.mcp.common import (
     now,
     grant_context,
@@ -48,7 +49,8 @@ async def context(db, token, tool=None):
             or not task
             or task.owner_user_id != user.id
             or task.status != "running"
-            or task.source not in ("web", "talk")
+            or task.source not in ("web", "talk", "incident")
+            or (task.source == "incident" and not await db.run_sync(lambda session: incident_task_authorized(session, task)))
         ):
             raise HTTPException(403, "Agent task authorization is unavailable")
         if tool and tool["name"] not in (agent.allowed_tools or []):
@@ -212,6 +214,10 @@ async def call(app, token, name, arguments):
                 await db.rollback()
                 # A racing duplicate returns through the same comparison checks.
                 return await call(app, token, name, arguments)
+            if auto_approved(tool, grant, client):
+                # Pre-approved by an administrator for this client: the same
+                # decision path runs at once, as the authorizing user.
+                return await decide(app, row.id, user, True, row.argument_digest, automatic=True)
             return request_result(row)
         await audit(
             db,
@@ -256,7 +262,7 @@ def request_result(row):
     }
 
 
-async def decide(app, request_id, human, approve, expected_digest):
+async def decide(app, request_id, human, approve, expected_digest, automatic=False):
     from types import SimpleNamespace
 
     async with async_session_factory() as db:
@@ -275,6 +281,8 @@ async def decide(app, request_id, human, approve, expected_digest):
             )
         if not role_at_least(human.role, tool["minimum_role"]):
             raise HTTPException(403, "Insufficient approval role")
+        if automatic and (human.id != user.id or not auto_approved(tool, grant, client)):
+            raise HTTPException(403, "Pre-approval is not available for this request")
         if (
             row.status != "pending"
             or row.expires_at <= now()
@@ -319,7 +327,8 @@ async def decide(app, request_id, human, approve, expected_digest):
                 or row.tool not in agent.allowed_tools
                 or not task
                 or task.status in ("cancelled", "failed")
-                or task.source not in ("web", "talk")
+                or task.source not in ("web", "talk", "incident")
+                or (task.source == "incident" and not await db.run_sync(lambda session: incident_task_authorized(session, task)))
                 or task.owner_user_id != user.id
             ):
                 raise HTTPException(403, "Agent authorization was revoked")
@@ -329,6 +338,8 @@ async def decide(app, request_id, human, approve, expected_digest):
         await agent_target_check(db, grant, tool, args)
         row.status = "executing"
         row.decided_by = human.id
+        if automatic:
+            await audit(db, row.tool, "auto_approved", grant=grant, user=human, request_id=row.id, task_id=row.task_id)
         await audit(
             db,
             row.tool,

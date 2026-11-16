@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, FileCode2, RefreshCw, Search } from "lucide-react";
+import { FileCode2, RefreshCw, Search } from "lucide-react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -73,7 +74,7 @@ export default function PlaybookLibrary() {
   const detail = entries.find(p => p.name === selected);
 
   return <div className="space-y-5">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><Link to="/automation" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground"><ArrowLeft className="h-3 w-3"/>Automation</Link><h1 className="flex items-center gap-2 text-2xl font-semibold"><BookOpen className="h-6 w-6 text-primary"/>Playbook Library</h1><p className="mt-1 text-sm text-muted-foreground">Browse registered Ansible playbooks by purpose, search the catalog and inspect their source.</p></div><Button variant="outline" disabled={loading} onClick={() => setRefresh(v => v + 1)}><RefreshCw className="mr-2 h-4 w-4"/>{loading ? "Loading…" : "Refresh"}</Button></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1 basis-64"><PageHeader title="Playbook Library" back={{ to: "/automation", label: "Run actions" }} description={<>Browse registered Ansible playbooks by purpose, search the catalog and inspect their source.</>} /></div><Button variant="outline" disabled={loading} onClick={() => setRefresh(v => v + 1)}><RefreshCw className="mr-2 h-4 w-4"/>{loading ? "Loading…" : "Refresh"}</Button></div>
     <Card><CardContent className="space-y-4 pt-4">
       <div className="flex flex-wrap items-end gap-3"><label className="min-w-48 flex-1 space-y-1 text-xs text-muted-foreground">Search playbooks<div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4"/><Input className="pl-9" aria-label="Search playbooks" placeholder="Name, description or category…" value={search} onChange={e => setSearch(e.target.value)}/></div></label><label className="min-w-48 space-y-1 text-xs text-muted-foreground">Category<Select aria-label="Playbook category" value={category} onChange={e => update("category", e.target.value)}><option value="">All categories</option>{category && !categories.includes(category) && <option>{category}</option>}{categories.map(c => <option key={c}>{c}</option>)}</Select></label></div>
       {error && <p role="alert" className="text-sm text-destructive">Could not refresh the library: {error}{names ? ". Showing the previous list." : ""}</p>}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Crown } from "lucide-react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,9 +128,9 @@ function SentinelCard({ redis }: { redis: RedisStatus }) {
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         {redis.sentinels.map((s) => (
-          <div key={s.host} className="flex justify-between">
-            <span className="text-muted-foreground">{s.host}</span>
-            <span>{s.reachable ? `sees master @ ${s.master_host}` : "unreachable"}</span>
+          <div key={s.host} className="flex flex-wrap justify-between gap-x-3">
+            <span className="whitespace-nowrap text-muted-foreground">{s.host}</span>
+            <span className="whitespace-nowrap">{s.reachable ? `sees master @ ${s.master_host}` : "unreachable"}</span>
           </div>
         ))}
       </CardContent>
@@ -169,20 +170,12 @@ export default function Cluster() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Cluster</h1>
-          <p className="text-sm text-muted-foreground">
-            Live status for configured Patroni and Redis/Sentinel services. The HA deployment guide is in docs/ha.md.
-          </p>
-        </div>
-        {hasRole("admin") && (
+      <PageHeader title="Cluster" description={<>Live status for configured Patroni and Redis/Sentinel services. The HA deployment guide is in docs/ha.md.</>} actions={<>{hasRole("admin") && (
           <Button variant="outline" onClick={handleSwitchover} disabled={switching || !status || !status.postgres.nodes.some((n) => n.reachable && n.role === "primary")}>
             <ArrowLeftRight className="h-4 w-4" />
             {switching ? "Switching over..." : "Trigger switchover"}
           </Button>
-        )}
-      </div>
+        )}</>} />
 
       {switchMessage && <p role="status" className="text-sm text-muted-foreground">{switchMessage}</p>}
 
@@ -227,7 +220,7 @@ export default function Cluster() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="ops-card-table w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="w-56 px-4 py-3 font-medium">Component</th>
@@ -237,7 +230,7 @@ export default function Cluster() {
               <tbody>
                 {ARCHITECTURE_REFERENCE.map((row) => (
                   <tr key={row.component} className="border-b border-border last:border-0 hover:bg-accent/50">
-                    <td className="px-4 py-3 font-medium">
+                    <td data-label="Component" className="px-4 py-3 font-medium">
                       <span className="flex items-center gap-2">
                         {row.status && (
                           <span
@@ -250,7 +243,7 @@ export default function Cluster() {
                         {row.component}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.detail}</td>
+                    <td data-label="Detail" className="px-4 py-3 text-muted-foreground">{row.detail}</td>
                   </tr>
                 ))}
               </tbody>

@@ -94,6 +94,34 @@ celery_app.conf.update(
             "schedule": crontab(minute=15),  # hourly, offset from other jobs
             "options": {"queue": "security"},
         },
+        # Nova's journal of the previous UTC day; runs in ops-ai-worker.
+        "nova-journal": {
+            "task": "worker_ai.tasks.nova_journal",
+            "schedule": crontab(hour=1, minute=20),
+            "options": {"queue": "ai"},
+        },
+        # Nova's proactive routines: starts those due this minute; runs in ops-ai-worker.
+        "nova-routines": {
+            "task": "worker_ai.tasks.nova_routines",
+            "schedule": 60.0,
+            "options": {"queue": "ai", "expires": 55},
+        },
+        "prune-event-tables": {
+            "task": "worker.scheduled_tasks.prune_event_tables",
+            "schedule": crontab(minute=40),
+            "options": {"expires": 3000},
+        },
+        # AI Traffic Monitor retention (configurable in the UI) and expired PCAPs.
+        "prune-ai-traffic": {
+            "task": "worker.scheduled_tasks.prune_ai_traffic",
+            "schedule": crontab(minute=25),
+            "options": {"expires": 3000},
+        },
+        "reap-orphaned-jobs": {
+            "task": "worker.scheduled_tasks.reap_orphaned_jobs",
+            "schedule": crontab(minute=10),
+            "options": {"expires": 3000},
+        },
         # More scheduled jobs (Renovate, DB maintenance) arrive with the
         # phases that give them somewhere to store their results.
     },

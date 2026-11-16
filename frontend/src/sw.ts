@@ -21,7 +21,7 @@ const appRoots = new Set([
   "", "login", "wallboard", "servers", "services", "monitoring", "traffic-map",
   "alerts", "cameras", "patching", "vulnerabilities", "security-intelligence",
   "automation", "ai-agents", "containers", "registries", "app-catalog", "logs",
-  "jobs", "cluster", "vpn", "settings",
+  "jobs", "cluster", "vpn", "settings", "airgap", "incidents", "mcp", "mcp-access",
 ]);
 registerRoute(
   ({ request, url }) => request.mode === "navigate"

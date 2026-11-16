@@ -28,6 +28,7 @@ async def trusted_origins(config=None):
     hosts = tuple(settings.trusted_dns)
     countries = list(settings.allowed_countries)
     source_policy = {
+        "trusted_ips": list(getattr(settings, "trusted_ips", [])),
         "source_ids": [s.id for s in enabled_sources(settings)],
         "ssh_failure_sources": [
             s.id
@@ -69,6 +70,11 @@ async def trusted_origins(config=None):
 
 
 def origin_reason(ip, country, policy, kind=None):
+    try:
+        if str(ipaddress.ip_address(ip)) in policy.get("trusted_ips", []):
+            return "Explicitly trusted IP address"
+    except ValueError:
+        pass
     if (
         kind != "ssh"
         and country

@@ -71,6 +71,7 @@ One image per application component, under the repository's namespace:
 | `ghcr.io/r0lfi/ops-center/ai-worker` | `worker_ai/Dockerfile` |
 | `ghcr.io/r0lfi/ops-center/security-worker` | `security/Dockerfile` |
 | `ghcr.io/r0lfi/ops-center/postgres-ha` | `ha/postgres/Dockerfile` (HA only) |
+| `ghcr.io/r0lfi/ops-center/ai-traffic-collector` | `ai_traffic_collector/Dockerfile` (optional `ai-traffic` profile) |
 
 Images are `linux/amd64`, carry OCI labels (version, revision, source, license),
 a provenance attestation and an SBOM. The API reports its version in

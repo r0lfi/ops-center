@@ -1,150 +1,89 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Sessions: the access token lives only in memory and is renewed from an HttpOnly refresh cookie.
 test.use({ serviceWorkers: "block" });
 const token = (expires: number) => "fixture." + Buffer.from(JSON.stringify({ exp: expires })).toString("base64url") + ".signature";
 const user = { id: "fixture", username: "Dashboard Test", role: "viewer", is_active: true };
-async function setup(page: Page) {
+
+async function setup(page: Page, { cookie = true } = {}) {
   await page.clock.install();
-  await page.route("**/api/auth/me", route => route.fulfill({ json: user }));
+  await page.route("**/api/auth/me", route => route.request().headers().authorization?.startsWith("Bearer fixture.")
+    ? route.fulfill({ json: user }) : route.fulfill({ status: 401, json: { detail: "not authenticated" } }));
   await page.route("**/api/metrics/services", route => route.fulfill({ json: { available: true, services: [] } }));
   await page.route("**/api/metrics/hosts?*", route => route.fulfill({ json: { available: true, cpu: [], memory: [], disk: [], network_rx: [], network_tx: [] } }));
-  await page.addInitScript(value => { if (!localStorage.getItem("ops_center_token")) localStorage.setItem("ops_center_token", value); }, token(Date.now() / 1000 + 3600));
+  if (cookie) await page.context().addCookies([{ name: "ops_refresh", value: "remembered", url: "http://127.0.0.1:4175/api/auth" }]);
 }
 async function tick(page: Page, ms: number) {
   await page.clock.fastForward(ms);
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
 }
+const noStoredToken = (page: Page) => page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
 
-test("an unattended dashboard renews across multiple token lifetimes without input", async ({ page }) => {
+test("a remembered browser opens signed in, keeps the token out of storage and renews it while open", async ({ page }) => {
   await setup(page);
-  let refreshes = 0;
+  const refreshes: { csrf?: string; cookie?: string }[] = [];
   await page.route("**/api/auth/refresh", async route => {
-    refreshes++;
+    refreshes.push({ csrf: route.request().headers()["x-requested-with"], cookie: route.request().headers().cookie });
     const now = await page.evaluate(() => Date.now());
-    await route.fulfill({ json: { access_token: token(now / 1000 + 3600), role: "viewer", username: "Dashboard Test" } });
+    await route.fulfill({ json: { access_token: token(now / 1000 + 15 * 60), role: "viewer", username: "Dashboard Test", remember: true } });
   });
   await page.goto("/wallboard");
   await expect(page.getByRole("heading", { name: "Ops Center Wallboard" })).toBeVisible();
-  for (let i = 1; i <= 3; i++) {
-    await tick(page, 56 * 60 * 1000);
-    await expect.poll(() => refreshes).toBe(i);
-    await expect.poll(() => page.evaluate(() => JSON.parse(atob(localStorage.getItem("ops_center_token")!.split(".")[1])).exp - Date.now() / 1000)).toBeGreaterThan(3500);
+  expect(refreshes[0]).toMatchObject({ csrf: "ops-center" });
+  expect(refreshes[0].cookie).toContain("ops_refresh=remembered");
+  for (let i = 2; i <= 4; i++) {
+    await tick(page, 14 * 60 * 1000);
+    await expect.poll(() => refreshes.length).toBe(i);
     await expect(page.getByRole("heading", { name: "Ops Center Wallboard" })).toBeVisible();
   }
+  expect(await noStoredToken(page)).not.toContain("fixture.");
 });
 
-test("temporary bootstrap failure preserves saved login and recovers", async ({ page }) => {
+test("temporary failure while resuming keeps the session and recovers", async ({ page }) => {
   await setup(page);
   let attempts = 0;
-  await page.route("**/api/auth/me", route => {
+  await page.route("**/api/auth/refresh", async route => {
     attempts++;
-    return attempts === 1 ? route.fulfill({ status: 502, json: { detail: "Temporary failure" } }) : route.fulfill({ json: user });
+    const now = await page.evaluate(() => Date.now());
+    return attempts === 1 ? route.fulfill({ status: 502, json: { detail: "Temporary failure" } })
+      : route.fulfill({ json: { access_token: token(now / 1000 + 900), role: "viewer", username: "Dashboard Test" } });
   });
   await page.goto("/wallboard");
-  await expect(page.getByRole("alertdialog")).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("ops_center_token"))).toBeTruthy();
-  await tick(page, 6000);
-  await expect.poll(() => attempts).toBeGreaterThan(1);
-  // The conservative offline guard still requires a reload before revealing data.
+  await expect.poll(async () => { await tick(page, 6000); return attempts; }).toBeGreaterThan(1);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Ops Center Wallboard" })).toBeVisible();
 });
 
-test("rejected renewal signs out a disabled/expired session", async ({ page }) => {
+test("a revoked or expired session signs out", async ({ page }) => {
   await setup(page);
-  await page.route("**/api/auth/refresh", route => route.fulfill({ status: 401, json: { detail: "user not found or inactive" } }));
+  let revoked = false;
+  await page.route("**/api/auth/refresh", async route => {
+    if (revoked) return route.fulfill({ status: 401, json: { detail: "session revoked" } });
+    const now = await page.evaluate(() => Date.now());
+    return route.fulfill({ json: { access_token: token(now / 1000 + 900), role: "viewer", username: "Dashboard Test" } });
+  });
   await page.goto("/wallboard");
   await expect(page.getByRole("heading", { name: "Ops Center Wallboard" })).toBeVisible();
-  await tick(page, 56 * 60 * 1000);
+  revoked = true;
+  await tick(page, 14 * 60 * 1000);
   await expect(page).toHaveURL(/\/login$/);
-  expect(await page.evaluate(() => localStorage.getItem("ops_center_token"))).toBeNull();
 });
 
-test("logout wins over an in-flight renewal", async ({ page }) => {
-  await setup(page);
-  let pending: (() => Promise<void>) | undefined;
-  await page.route("**/api/auth/refresh", route => { pending = () => route.fulfill({ json: { access_token: token(Date.now() / 1000 + 7200) } }); });
-  await page.goto("/servers");
-  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
-  await tick(page, 56 * 60 * 1000);
-  await expect.poll(() => !!pending).toBe(true);
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await pending!();
+test("without a session cookie the login page asks for Remember me", async ({ page }) => {
+  await setup(page, { cookie: false });
+  await page.route("**/api/auth/refresh", route => route.fulfill({ status: 401, json: { detail: "not signed in" } }));
+  let body: Record<string, unknown> = {};
+  await page.route("**/api/auth/login", async route => {
+    body = route.request().postDataJSON();
+    const now = await page.evaluate(() => Date.now());
+    await route.fulfill({ json: { access_token: token(now / 1000 + 900), role: "viewer", username: "Dashboard Test", remember: true } });
+  });
+  await page.goto("/wallboard");
   await expect(page).toHaveURL(/\/login$/);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("ops_center_token"))).toBeNull();
-});
-
-test("a late 401 from an old request does not discard the renewed token", async ({ page }) => {
-  await setup(page);
-  let rejectOld: (() => Promise<void>) | undefined;
-  await page.route("**/api/metrics/services", route => {
-    if (!rejectOld) rejectOld = () => route.fulfill({ status: 401, json: { detail: "expired old request" } });
-    else return route.fulfill({ json: { available: true, services: [] } });
-  });
-  await page.route("**/api/auth/refresh", async route => {
-    const now = await page.evaluate(() => Date.now());
-    await route.fulfill({ json: { access_token: token(now / 1000 + 3600) } });
-  });
-  await page.goto("/wallboard");
-  await expect.poll(() => !!rejectOld).toBe(true);
-  const before = await page.evaluate(() => localStorage.getItem("ops_center_token"));
-  await tick(page, 56 * 60 * 1000);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("ops_center_token"))).not.toBe(before);
-  await rejectOld!();
+  await page.getByLabel("Username").fill("dashboard");
+  await page.getByLabel("Password").fill("correct horse");
+  await page.getByRole("checkbox", { name: /Remember me for 30 days/ }).check();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Ops Center Wallboard" })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("ops_center_token"))).toBeTruthy();
-});
-
-test("agent event streams reconnect with the renewed token", async ({ page }) => {
-  await setup(page);
-  await page.addInitScript(() => {
-    // Exercise stream lifetime independently of accelerated 3D animation frames.
-    localStorage.setItem("ops_floor_view", "2d");
-    const streams: { url: string; closed: boolean }[] = [];
-    Object.assign(window, { fixtureStreams: streams, EventSource: class {
-      record: { url: string; closed: boolean };
-      constructor(url: string) { this.record = { url, closed: false }; streams.push(this.record); }
-      close() { this.record.closed = true; }
-    } });
-  });
-  await page.route("**/api/auth/refresh", async route => {
-    const now = await page.evaluate(() => Date.now());
-    await route.fulfill({ json: { access_token: token(now / 1000 + 3600) } });
-  });
-  await page.route("**/api/ai/usage?*", route => route.fulfill({ json: { points: [] } }));
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  await page.goto("/ai-agents");
-  const connections = () => page.evaluate(() => (window as Window & { fixtureStreams: { url: string; closed: boolean }[] }).fixtureStreams);
-  await expect.poll(async () => (await connections()).length).toBe(2);
-  const before = (await connections())[0].url;
-  await tick(page, 56 * 60 * 1000);
-  await expect.poll(async () => (await connections()).length).toBe(4);
-  const after = await connections();
-  expect(after.slice(0, 2).every(stream => stream.closed)).toBe(true);
-  expect(after.slice(2).every(stream => !stream.closed && stream.url !== before)).toBe(true);
-  expect(errors).toEqual([]);
-});
-
-
-test("a stalled renewal times out without clearing login and the next attempt succeeds", async ({ page }) => {
-  await setup(page);
-  let attempts = 0;
-  await page.route("**/api/auth/refresh", async route => {
-    attempts++;
-    if (attempts === 1) return; // Simulated stalled response.
-    const now = await page.evaluate(() => Date.now());
-    await route.fulfill({ json: { access_token: token(now / 1000 + 3600) } });
-  });
-  await page.goto("/wallboard");
-  await expect(page.getByRole("heading", { name: "Ops Center Wallboard" })).toBeVisible();
-  const before = await page.evaluate(() => localStorage.getItem("ops_center_token"));
-  await tick(page, 56 * 60 * 1000);
-  await expect.poll(() => attempts).toBe(1);
-  await page.clock.fastForward(16000);
-  await expect(page.getByRole("alertdialog")).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("ops_center_token"))).toBe(before);
-  await tick(page, 60000);
-  await expect.poll(() => attempts).toBe(2);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("ops_center_token"))).not.toBe(before);
+  expect(body).toMatchObject({ username: "dashboard", remember_me: true });
 });

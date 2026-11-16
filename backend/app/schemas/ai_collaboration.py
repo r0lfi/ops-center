@@ -7,14 +7,14 @@ READ_TOOLS = (
     "get_server_metrics", "get_alerts", "get_patch_status", "list_pending_patches",
     "get_security_summary", "list_top_vulnerabilities", "list_containers",
     "get_container_vulnerabilities", "search_logs", "get_service_status",
-    "get_disk_usage", "get_running_processes", "get_network_traffic_summary",
+    "get_disk_usage", "get_running_processes", "run_diagnostic", "get_network_traffic_summary",
     "get_container_logs", "get_container_env_keys", "list_docker_networks",
     "list_repo_files", "read_repo_file", "search_code",
 )
 # These tools have a required hostname or are explicitly checked for one by
 # the collaboration gate. Global data tools are unavailable in scoped boards.
 HOST_TOOLS = ("get_server_metrics", "get_patch_status", "list_containers",
-              "get_service_status", "get_disk_usage", "get_running_processes",
+              "get_service_status", "get_disk_usage", "get_running_processes", "run_diagnostic",
               "get_container_logs", "get_container_env_keys", "list_docker_networks",
               "search_logs", "get_container_vulnerabilities")
 

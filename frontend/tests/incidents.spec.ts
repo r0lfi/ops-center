@@ -1,0 +1,74 @@
+import { expect, test } from "@playwright/test";
+test.use({serviceWorkers:"block"});
+const base = {id:42,category:"disk",rule:"disk_capacity",resource:"demo-storage.example /data",title:"Disk capacity",severity:"critical",status:"new",source_state:"firing",details:{summary:"Storage is approaching capacity."},observations:108,revision:0,created_at:"2026-09-14T06:00:00Z",last_seen:"2026-09-14T07:00:00Z",completed_at:null,updated_by:null,talk_policy:"queued",history:[{actor:"monitor",status:"new",note:"First observation.",created_at:"2026-09-14T06:00:00Z"}],deliveries:[{status:"sent",claimed_at:null,sent_at:"2026-09-14T06:00:02Z"}]};
+test("one IM remains visible through acknowledgement and completion",async({page})=>{
+  await page.addInitScript(()=>(document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
+  let item={...base};
+  const decisions:Record<string,unknown>[]=[];
+  await page.route("**/api/incidents?*",r=>r.fulfill({json:{items:[item],total:1,offset:0,monitor:{checked_at:Date.now()/1000,alertmanager:"ok",traffic:"ok"}}}));
+  await page.route("**/api/incidents/42",r=>r.fulfill({json:item}));
+  await page.route("**/api/incidents/42/status",async r=>{
+    const body=r.request().postDataJSON();decisions.push(body);
+    item={...item,status:body.status,revision:item.revision+1,history:[...item.history,{actor:"demo-operator",status:body.status,note:body.note,created_at:"2026-09-14T07:01:00Z"}]};
+    return r.fulfill({json:item});
+  });
+  await page.goto("/incidents");
+  await expect(page.getByRole("heading",{name:"Incidents",exact:true})).toBeVisible();
+  await expect(page.getByText("108 observations",{exact:false})).toBeVisible();
+  await page.getByRole("link").filter({hasText:"IM-000042"}).click();
+  await page.getByLabel("Handling note").fill("Capacity expansion scheduled.");
+  await page.getByRole("button",{name:"Approve / acknowledge"}).click();
+  await expect(page.getByText("Capacity expansion scheduled.",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Start work"}).click();
+  await expect(page.getByRole("button",{name:"Start work"})).toHaveCount(0);
+  await page.getByLabel("Handling note").fill("Handled; keep this ongoing condition quiet.");
+  await page.getByRole("button",{name:"Mark completed"}).click();
+  await expect(page.getByRole("status").filter({hasText:"Completed."})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Mark completed"})).toHaveCount(0);
+  expect(decisions.map(d=>d.status)).toEqual(["approved","in_progress","completed"]);
+  expect(decisions.map(d=>d.revision)).toEqual([0,1,2]);
+  await page.screenshot({path:`test-results/im-completed-${test.info().project.name}.png`,fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await page.reload();
+  await expect(page.getByRole("status").filter({hasText:"Completed."})).toBeVisible();
+});
+test("viewer has no handling controls and failed fetch hides stale detail",async({page})=>{
+  await page.addInitScript(()=>(document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
+  await page.route("**/api/auth/me",r=>r.fulfill({json:{id:"viewer",username:"viewer",role:"viewer",is_active:true}}));
+  await page.route("**/api/incidents/42",r=>r.fulfill({json:base}));
+  await page.goto("/incidents/42");
+  await expect(page.getByRole("heading",{name:"Disk capacity"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"Mark completed"})).toHaveCount(0);
+  await page.route("**/api/incidents/42",r=>r.fulfill({status:503,json:{detail:"Synthetic outage"}}));
+  await page.reload();
+  await expect(page.getByRole("alertdialog")).toContainText("Ops Center is currently offline");
+  await expect(page.getByRole("heading",{name:"Disk capacity"})).toHaveCount(0);
+});
+test("configure notification categories and explicit trusted IPs",async({page})=>{
+  await page.addInitScript(()=>(document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
+  let config={revision:0,talk_enabled:true,categories:["disk","authentication","traffic"],severities:["warning","critical"],excluded_rules:[],excluded_resources:[],recovery_minutes:30,talk_progress:false,transport_enabled:true};
+  let traffic={revision:0,enabled:false,sources:[],allowed_countries:[],trusted_dns:[],trusted_ips:[] as string[],retention_days:30,max_rows:500000,notify_authentication:true};
+  await page.route("**/api/settings/incidents",r=>{
+    if(r.request().method()==="PUT")config={...r.request().postDataJSON(),revision:config.revision+1,transport_enabled:true};
+    return r.fulfill({json:config});
+  });
+  await page.route("**/api/settings/traffic",r=>{
+    if(r.request().method()==="PUT")traffic={...r.request().postDataJSON(),revision:traffic.revision+1};
+    return r.fulfill({json:traffic});
+  });
+  await page.goto("/settings?tab=incidents");
+  await page.getByLabel("disk notifications",{exact:true}).uncheck();
+  await page.getByLabel("Excluded resources",{exact:true}).fill("demo-storage.example /archive");
+  await page.getByRole("button",{name:"Save incident settings"}).click();
+  await expect(page.getByRole("status").filter({hasText:"Incident notification settings saved"})).toBeVisible();
+  expect(config.categories).not.toContain("disk");
+  expect(config.excluded_resources).toEqual(["demo-storage.example /archive"]);
+  await page.getByRole("tab",{name:"Traffic Map"}).click();
+  await page.getByLabel("Trusted IP addresses",{exact:true}).fill("203.0.113.10");
+  await page.getByRole("button",{name:"Save traffic settings"}).click();
+  await expect.poll(()=>traffic.trusted_ips).toEqual(["203.0.113.10"]);
+  await page.reload();
+  await expect(page.getByLabel("Trusted IP addresses",{exact:true})).toHaveValue("203.0.113.10");
+  await page.getByRole("tab",{name:"Incidents & Talk"}).click();
+  await expect(page.getByLabel("disk notifications",{exact:true})).not.toBeChecked();
+});

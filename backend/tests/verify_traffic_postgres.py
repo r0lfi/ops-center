@@ -250,25 +250,13 @@ async def main():
 
             talk_watch.notify_once = notice
             await security.notify_pending()
-            assert len(notices) == 1 and "HIGH:" in notices[0][2]
+            assert not notices  # Delivery now belongs to durable IM tasks.
             await security.notify_pending()
-            assert len(notices) == 1
-            # High-priority authentication bypasses the aggregate digest delay.
-            async with sessions() as db, db.begin():
-                item = auth.candidate(
-                    {**base, "signal": "auth_success", "ts": now, "source": "media"},
-                    {"countries": [], "addresses": []},
-                )
-                await auth.persist(db, item, now)
-            await security.notify_pending()
-            assert len(notices) == 2
-            # Disabled sources cannot send old pending authentication alerts.
+            assert not notices
+            # IM concurrency and delivery are verified in test_incidents.py.
             async with sessions() as db, db.begin():
                 row = await db.get(TrafficSettings, 1)
                 row.value = {**row.value, "enabled": False}
-                db.add(A(**item, created_at=now))
-            await security.notify_pending()
-            assert len(notices) == 2
             assert not (await security.authentication_banner())["enabled"]
             # More than one analysis batch must not lose delayed successes.
             policy = {"countries": [], "addresses": [], "source_ids": ["media"]}

@@ -14,9 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { OverflowMenu } from "@/components/ui/overflow-menu";
 import { Select } from "@/components/ui/select";
 import { api, type Host, type HostGroup } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatDateTime } from "@/lib/format";
 
 const DAYS = [
   { label: "Monday", value: 1 },
@@ -85,9 +88,11 @@ const DEFAULT_FORM: GroupFormState = {
 
 function GroupFormDialog({
   group,
+  allHosts = [],
   onSaved,
 }: {
   group?: HostGroup;
+  allHosts?: Host[];
   onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -250,12 +255,13 @@ function GroupFormDialog({
             </Button>
           </DialogFooter>
         </form>
+        {group && <GroupMemberEditor group={group} allHosts={allHosts} onChanged={onSaved} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function GroupMembers({ group, allHosts, onChanged }: { group: HostGroup; allHosts: Host[]; onChanged: () => void }) {
+function GroupMemberEditor({ group, allHosts, onChanged }: { group: HostGroup; allHosts: Host[]; onChanged: () => void }) {
   const [adding, setAdding] = useState("");
   const memberIds = new Set(group.hosts.map((h) => h.id));
   const available = allHosts.filter((h) => !memberIds.has(h.id));
@@ -273,39 +279,26 @@ function GroupMembers({ group, allHosts, onChanged }: { group: HostGroup; allHos
   }
 
   return (
-    <div className="space-y-2">
+    <section aria-label="Servers in this group" className="space-y-2 border-t border-border pt-3">
+      <h3 className="text-sm font-medium">Servers in this group</h3>
+      <p className="text-xs text-muted-foreground">Changes here apply at once. A server can only belong to one group at a time, so adding it here moves it out of any other group.</p>
       <div className="flex flex-wrap gap-1.5">
         {group.hosts.length === 0 && <span className="text-xs text-muted-foreground">No servers yet.</span>}
         {group.hosts.map((h) => (
           <Badge key={h.id} variant="secondary" className="gap-1.5">
             {h.hostname}
-            <button
-              onClick={() => remove(h.id)}
-              className="text-muted-foreground hover:text-destructive"
-              title="Remove from group"
-            >
-              &times;
-            </button>
+            <button type="button" onClick={() => remove(h.id)} className="text-muted-foreground hover:text-destructive" aria-label={`Remove ${h.hostname} from group`} title="Remove from group">&times;</button>
           </Badge>
         ))}
       </div>
       <div className="flex gap-2">
-        <Select value={adding} onChange={(e) => setAdding(e.target.value)} className="h-8 max-w-xs text-xs">
+        <Select aria-label="Server to add" value={adding} onChange={(e) => setAdding(e.target.value)} className="h-8 max-w-xs text-xs">
           <option value="">Add server...</option>
-          {available.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.hostname}
-            </option>
-          ))}
+          {available.map((h) => <option key={h.id} value={h.id}>{h.hostname}</option>)}
         </Select>
-        <Button size="sm" variant="outline" onClick={addSelected} disabled={!adding}>
-          Add
-        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={addSelected} disabled={!adding}>Add</Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        A server can only belong to one group at a time - adding it here moves it out of any other group.
-      </p>
-    </div>
+    </section>
   );
 }
 
@@ -316,6 +309,9 @@ export function PatchGroupsSection() {
   const [hosts, setHosts] = useState<Host[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<HostGroup | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     Promise.all([api.hostGroups.list(), api.hosts.list()])
@@ -345,10 +341,19 @@ export function PatchGroupsSection() {
     }
   }
 
-  async function removeGroup(group: HostGroup) {
-    if (!confirm(`Delete group "${group.name}"? Member servers are unaffected.`)) return;
-    await api.hostGroups.remove(group.id);
-    refresh();
+  async function removeGroup() {
+    if (!deleting) return;
+    setBusy(true);
+    setDeleteError(null);
+    try {
+      await api.hostGroups.remove(deleting.id);
+      setDeleting(null);
+      refresh();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Could not delete this group");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -366,8 +371,8 @@ export function PatchGroupsSection() {
         )}
         {groups.map((group) => (
           <div key={group.id} className="rounded-md border border-border p-3">
-            <div className="flex items-start justify-between gap-4">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+              <div className="min-w-0 flex-1 basis-56">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{group.name}</span>
                   {group.cron_expression && (
@@ -380,11 +385,11 @@ export function PatchGroupsSection() {
                 <p className="mt-1 text-xs text-muted-foreground">{describeSchedule(group)}</p>
                 {group.last_triggered_at && (
                   <p className="text-xs text-muted-foreground">
-                    Last run: {new Date(group.last_triggered_at).toLocaleString()}
+                    Last run: {formatDateTime(group.last_triggered_at)}
                   </p>
                 )}
               </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button asChild size="sm" variant="outline"><Link to={`/patching/reports?group=${encodeURIComponent(group.name)}`}>Reports</Link></Button>
                 {hasRole("operator") && group.patch_type && (
                   <Button
@@ -396,19 +401,19 @@ export function PatchGroupsSection() {
                     {runningId === group.id ? "Running..." : "Run now"}
                   </Button>
                 )}
-                {hasRole("admin") && <GroupFormDialog group={group} onSaved={refresh} />}
-                {hasRole("admin") && (
-                  <Button size="sm" variant="destructive" onClick={() => removeGroup(group)}>
-                    Delete
-                  </Button>
-                )}
+                {hasRole("admin") && <GroupFormDialog group={group} allHosts={hosts} onSaved={refresh} />}
+                {hasRole("admin") && <OverflowMenu label={`More actions for ${group.name}`} items={[{ label: "Delete group", destructive: true, onSelect: () => { setDeleteError(null); setDeleting(group); } }]} />}
               </div>
             </div>
-            <div className="mt-3">
-              <GroupMembers group={group} allHosts={hosts} onChanged={refresh} />
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {group.hosts.length === 0 && <span className="text-xs text-muted-foreground">No servers yet.</span>}
+              {group.hosts.map((h) => <Badge key={h.id} variant="secondary">{h.hostname}</Badge>)}
             </div>
           </div>
         ))}
+        <ConfirmDialog open={deleting !== null} title={`Delete group "${deleting?.name ?? ""}"?`} confirmLabel="Delete group" busy={busy} error={deleteError} onCancel={() => setDeleting(null)} onConfirm={removeGroup}>
+          Member servers are unaffected.
+        </ConfirmDialog>
       </CardContent>
     </Card>
   );

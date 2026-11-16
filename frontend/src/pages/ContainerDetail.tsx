@@ -28,14 +28,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/format";
 import { useToast } from "@/lib/toast";
-
-const SEVERITY_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = {
-  critical: "critical",
-  high: "critical",
-  medium: "warning",
-  low: "ok",
-  unknown: "unknown",
-};
+import { severityVariant } from "@/lib/severity";
 
 const STATUS_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = {
   running: "ok",
@@ -309,7 +302,7 @@ function SecurityTab({ hostname, name }: { hostname: string; name: string }) {
       </div>
 
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full text-sm">
+        <table className="ops-card-table w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-4 py-3 font-medium">CVE</th>
@@ -330,14 +323,14 @@ function SecurityTab({ hostname, name }: { hostname: string; name: string }) {
             )}
             {cves.map((c) => (
               <tr key={c.cve_id} className="border-b border-border last:border-0 hover:bg-accent/50">
-                <td className="px-4 py-3 font-mono text-xs">{c.cve_id}</td>
-                <td className="px-4 py-3">
-                  <Badge variant={SEVERITY_VARIANT[c.severity] ?? "unknown"}>{c.severity}</Badge>
+                <td data-label="CVE" className="px-4 py-3 font-mono text-xs">{c.cve_id}</td>
+                <td data-label="Severity" className="px-4 py-3">
+                  <Badge variant={severityVariant(c.severity)}>{c.severity}</Badge>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{c.package_name}</td>
-                <td className="px-4 py-3 font-mono text-xs">{c.installed_version ?? "-"}</td>
-                <td className="px-4 py-3 font-mono text-xs">{c.fixed_version ?? "-"}</td>
-                <td className="max-w-md px-4 py-3 text-xs text-muted-foreground">{c.description ?? "-"}</td>
+                <td data-label="Package" className="px-4 py-3 font-mono text-xs">{c.package_name}</td>
+                <td data-label="Installed" className="px-4 py-3 font-mono text-xs">{c.installed_version ?? "-"}</td>
+                <td data-label="Fixed" className="px-4 py-3 font-mono text-xs">{c.fixed_version ?? "-"}</td>
+                <td data-label="Description" className="max-w-md px-4 py-3 text-xs text-muted-foreground">{c.description ?? "-"}</td>
               </tr>
             ))}
           </tbody>

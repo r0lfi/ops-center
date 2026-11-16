@@ -12,6 +12,7 @@
 
   tasks:
     - name: "Fetch container log tail: {{ container_name }}"
+      when: since is not defined or until is not defined
       ansible.builtin.command:
         argv:
           - docker
@@ -19,13 +20,35 @@
           - "--tail"
           - "{{ tail_lines }}"
           - "{{ container_name }}"
+        expand_argument_vars: false
       register: result
       changed_when: false
       failed_when: false
 
+    - name: Fetch timestamped logs in the selected monitoring window
+      when: since is defined and until is defined
+      ansible.builtin.command:
+        argv:
+          - docker
+          - logs
+          - "--tail"
+          - "{{ tail_lines }}"
+          - "--timestamps"
+          - "--since"
+          - "{{ since }}"
+          - "--until"
+          - "{{ until }}"
+          - "{{ container_name }}"
+        expand_argument_vars: false
+      register: window_result
+      changed_when: false
+      failed_when: false
+
     - name: Emit structured results
+      vars:
+        log_result: "{{ window_result if (since is defined and until is defined) else result }}"
       ansible.builtin.debug:
         msg: >-
           OPS_CENTER_QUERY_RESULT:{{ {'lines':
-          ((result.stdout_lines | default([])) + (result.stderr_lines | default([]))),
-          'ok': (result.rc == 0)} | to_json }}
+          ((log_result.stdout_lines | default([])) + (log_result.stderr_lines | default([]))),
+          'ok': (log_result.rc == 0)} | to_json }}

@@ -138,8 +138,11 @@ def list_volumes() -> list[dict]:
     return json.loads(result.stdout) if result.returncode == 0 and result.stdout.strip() else []
 
 
-def container_logs(name: str, tail: int) -> dict:
-    result = _run_docker(["logs", "--tail", str(tail), name])
+def container_logs(name: str, tail: int, options: dict | None = None) -> dict:
+    args = ["logs", "--tail", str(tail)]
+    if options:
+        args += ["--timestamps", "--since", options["since"], "--until", options["until"]]
+    result = _run_docker([*args, name])
     lines = (result.stdout + result.stderr).splitlines()
     return {"ok": result.returncode == 0, "lines": lines}
 
@@ -149,6 +152,14 @@ def container_stats(name: str) -> dict:
     if result.returncode != 0 or not result.stdout.strip():
         return {}
     return json.loads(result.stdout.strip())
+
+
+def inventory_stats() -> list[dict]:
+    """One read-only batch per inventory cycle, not per graph or container."""
+    result = _run_docker(["stats", "--all", "--no-stream", "--format", "{{json .}}"])
+    if result.returncode:
+        return []
+    return [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
 
 
 def inspect_container(name: str) -> dict | None:

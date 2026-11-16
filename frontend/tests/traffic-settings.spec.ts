@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 test.use({ serviceWorkers: "block" });
 
 test("configure an arbitrary registered server and use its dynamic traffic filter", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("ops_center_token", "pwa-test-only"));
+  await page.addInitScript(() => (document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
   const hostId="11111111-1111-4111-8111-111111111111";
   let config={revision:0,enabled:false,sources:[] as Record<string,unknown>[],allowed_countries:[] as string[],trusted_dns:[] as string[],retention_days:30,max_rows:500000,notify_authentication:true};
   await page.route("**/api/hosts",route=>route.fulfill({json:[{id:hostId,hostname:"my-gateway",ssh_host_fingerprint:"synthetic"}]}));
@@ -10,7 +10,7 @@ test("configure an arbitrary registered server and use its dynamic traffic filte
     if(route.request().method()==="PUT") config={...route.request().postDataJSON(),revision:config.revision+1};
     return route.fulfill({json:config});
   });
-  await page.goto("/settings");
+  await page.goto("/settings?tab=traffic");
   await page.getByRole("button",{name:"Add traffic source"}).click();
   await page.getByLabel("Source ID",{exact:true}).fill("my-access");
   await page.getByLabel("Display name",{exact:true}).fill("My gateway access");
@@ -30,16 +30,17 @@ test("configure an arbitrary registered server and use its dynamic traffic filte
   await page.route("**/api/traffic/security/banner",route=>route.fulfill({json:{enabled:false,sources:[],alerts:[],observations:[]}}));
   await page.goto("/traffic-map");
   await expect(page.getByText("1/1 current")).toBeVisible();
-  await page.getByRole("button",{name:"My gateway access",exact:true}).click();
+  await page.getByPlaceholder("All services. Search…").click();
+  await page.getByRole("button",{name:"My gateway access"}).click();
   await expect(page).toHaveURL(/service=my-access/);
   await expect(page.getByText("Collectors live",{exact:true})).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button",{name:"My gateway access",exact:true})).toHaveAttribute("aria-pressed","true");
+  await expect(page.getByRole("button",{name:"Clear My gateway access"})).toBeVisible();
 });
 
 for (const path of ["/traffic-map","/traffic-map/wallboard"]) {
   test("authentication banner scrolls out of the viewport: "+path, async ({page})=>{
-    await page.addInitScript(()=>localStorage.setItem("ops_center_token","pwa-test-only"));
+    await page.addInitScript(()=>(document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
     await page.route("**/api/traffic/history?*",route=>route.fulfill({json:{enabled:true,now:Date.now()/1000,events:[],destinations:{},stats:{total:0,clients:0,countries:0,errors:0,handshakes:0},countries:[],timeline:[],sources:[]}}));
     await page.route("**/api/traffic/security?*",route=>route.fulfill({json:{alerts:[],authentication:[],logins:[]}}));
     await page.route("**/api/traffic/security/banner",route=>route.fulfill({json:{enabled:true,last_success:Date.now()/1000,sources:[],alerts:[],observations:[]}}));

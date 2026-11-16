@@ -17,3 +17,16 @@ def task_binding_valid(task):
         return False
     return task.owner_user_id is not None and task.owner_user_id == bound_user_id(
         task.requested_by.removeprefix("talk:"), task.conversation_key.removeprefix("talk:"))
+
+
+def routed_agent_slug(room_token, owner_id):
+    """Agent slug for a routed room, or None for the coordinator default.
+
+    A route only applies to a sender already bound to an active owner in
+    this room (owner_id from bound_user_id); unbound senders, guests and
+    other rooms keep the coordinator.
+    """
+    if owner_id is None or not room_token:
+        return None
+    slugs = {r.agent_slug for r in get_settings().talk_agent_routes if r.room_token == room_token}
+    return next(iter(slugs)) if len(slugs) == 1 else None

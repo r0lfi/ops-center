@@ -2,6 +2,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAgentActivityFeed } from "@/lib/useAgentActivityFeed";
+import { formatTime } from "@/lib/format";
 
 export default function AIAgentLogs() {
   const activity = useAgentActivityFeed();
@@ -42,7 +43,7 @@ export default function AIAgentLogs() {
                 {entry.target && <span className="text-muted-foreground"> ({entry.target})</span>}
               </div>
               <span className="shrink-0 text-xs text-muted-foreground">
-                {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {formatTime(entry.ts)}
               </span>
             </div>
           ))}

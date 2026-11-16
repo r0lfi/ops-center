@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type Registry } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { OverflowMenu } from "@/components/ui/overflow-menu";
 
 const DEFAULT_FORM = {
   name: "",
@@ -140,7 +143,9 @@ function AddRegistryDialog({ onCreated }: { onCreated: () => void }) {
 export default function Registries() {
   const { hasRole } = useAuth();
   const [registries, setRegistries] = useState<Registry[]>([]);
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Registry | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     api.registries.list().then(setRegistries).catch(() => {});
@@ -148,28 +153,25 @@ export default function Registries() {
 
   useEffect(refresh, [refresh]);
 
-  async function remove(id: string) {
-    setRemoving(id);
+  async function remove() {
+    if (!removing) return;
+    setBusy(true);
+    setRemoveError(null);
     try {
-      await api.registries.remove(id);
-      refresh();
-    } finally {
+      await api.registries.remove(removing.id);
       setRemoving(null);
+      refresh();
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : "Could not remove this registry");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Registries</h1>
-          <p className="text-sm text-muted-foreground">
-            Container registries used for pulling images and checking for updates. Credentials are
-            stored on disk, never in the database, and never sent back to the browser.
-          </p>
-        </div>
-        {hasRole("admin") && <AddRegistryDialog onCreated={refresh} />}
-      </div>
+      <PageHeader title="Registries" description={<>Container registries used for pulling images and checking for updates. Credentials are
+            stored on disk, never in the database, and never sent back to the browser.</>} actions={<>{hasRole("admin") && <AddRegistryDialog onCreated={refresh} />}</>} />
 
       <Card>
         <CardHeader>
@@ -192,15 +194,17 @@ export default function Registries() {
               <div className="flex items-center gap-3">
                 {r.username && <span className="text-xs text-muted-foreground">{r.username}</span>}
                 {hasRole("admin") && (
-                  <Button size="sm" variant="destructive" disabled={removing === r.id} onClick={() => remove(r.id)}>
-                    {removing === r.id ? "Removing..." : "Remove"}
-                  </Button>
+                  <OverflowMenu label={`More actions for ${r.name}`} items={[{ label: "Remove registry", destructive: true, onSelect: () => { setRemoveError(null); setRemoving(r); } }]} />
                 )}
               </div>
             </div>
           ))}
         </CardContent>
       </Card>
+
+      <ConfirmDialog open={removing !== null} title={`Remove registry "${removing?.name ?? ""}"?`} confirmLabel="Remove registry" busy={busy} error={removeError} onCancel={() => setRemoving(null)} onConfirm={remove}>
+        Its stored credentials are deleted. Pulls from a private image in this registry stop working until you add it again.
+      </ConfirmDialog>
     </div>
   );
 }

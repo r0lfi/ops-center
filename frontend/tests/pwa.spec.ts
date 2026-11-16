@@ -20,7 +20,7 @@ async function cacheUrls(page: Page) {
 }
 test.beforeEach(async ({ context, request }) => {
   await request.get("/__test__/reset");
-  await context.addInitScript(() => localStorage.setItem("ops_center_token", "pwa-test-only"));
+  await context.addInitScript(() => (document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
 });
 test.afterEach(async ({ request }) => { await request.get("/__test__/reset"); });
 
@@ -95,7 +95,8 @@ test("only static assets are cached; API, auth, commands, SSE and WebSocket pass
 test("offline hides live UI, navigation falls back without data and recovery fetches fresh state", async ({ page, context }) => {
   await controlled(page);
   await context.setOffline(true);
-  await expect(page.getByRole("heading", { name: "Ops Center is currently offline" })).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.getByRole("heading", { name: "Ops Center is currently offline" })).toBeVisible({ timeout: 12000 });
   await expect(page.getByRole("heading", { name: "Servers", exact: true })).toBeHidden();
   await page.goto("/servers");
   await expect(page.getByRole("heading", { name: "Ops Center is currently offline" })).toBeVisible();
@@ -111,19 +112,40 @@ test("backend failures are not hidden by cached data; polling detects failure", 
   await page.getByRole("button", { name: "Add Server", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await request.get("/__test__/backend-down");
-  await expect(page.getByRole("heading", { name: "Ops Center is currently offline" })).toBeVisible({ timeout: 12000 });
+  await expect(page.getByRole("heading", { name: "Ops Center's backend is not responding" })).toBeVisible({ timeout: 40000 });
   await expect(page.getByRole("heading", { name: "Servers", exact: true })).toBeHidden();
   await page.keyboard.press("Tab");
   expect(await page.evaluate(() => !!document.activeElement?.closest('[role="alertdialog"]'))).toBe(true);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("alertdialog")).toBeVisible();
   await request.get("/__test__/reset");
-  await page.getByRole("button", { name: "Retry connection" }).click();
-  await page.getByRole("button", { name: "Reload Ops Center" }).click();
-  await expect(page.getByRole("heading", { name: "Servers", exact: true })).toBeVisible();
+  // Recovery needs no click, and what the user was doing is still on screen.
+  await expect(page.getByRole("alertdialog")).toBeHidden({ timeout: 12000 });
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByText("Connection restored.", { exact: false })).toBeVisible();
   await request.get("/__test__/frontend-down");
   await page.goto("/servers");
   await expect(page.getByRole("heading", { name: "Ops Center is currently offline" })).toBeVisible();
+});
+
+test("one failed health check does not hide the app", async ({ page, request }) => {
+  await controlled(page);
+  await request.get("/__test__/backend-down");
+  await page.evaluate(() => window.dispatchEvent(new Event("ops-backend-unavailable")));
+  await page.waitForTimeout(1000);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await request.get("/__test__/reset");
+  await page.waitForTimeout(5000);
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Servers", exact: true })).toBeVisible();
+});
+
+test("a database failure names what is failing", async ({ page }) => {
+  await controlled(page);
+  await page.route("/api/health", route => route.fulfill({ json: { status: "degraded", components: { database: "error", redis: "ok" } } }));
+  await page.evaluate(() => window.dispatchEvent(new Event("ops-backend-unavailable")));
+  await expect(page.getByRole("heading", { name: "Ops Center can't reach its database" })).toBeVisible({ timeout: 12000 });
+  await expect(page.getByRole("alertdialog").getByRole("listitem")).toHaveText(["Database"]);
 });
 
 test("install prompt is discreet, conditional and hidden in standalone simulation", async ({ page }) => {
@@ -184,6 +206,6 @@ test.describe("ordinary web without service workers", () => {
     if (!await page.getByRole("button", { name: "Sign out" }).isVisible()) await page.getByRole("button", { name: "Open menu", exact: true }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/login$/);
-    expect(await page.evaluate(() => localStorage.getItem("ops_center_token"))).toBeNull();
+    expect(await page.evaluate(() => document.cookie)).not.toContain("ops_refresh=pwa-test-only");
   });
 });

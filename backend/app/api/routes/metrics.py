@@ -1,37 +1,14 @@
-import time
-
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db
+from app.api.deps import require_role
+from app.services.monitoring import inventory, range_batch, bind_hosts, HOST_QUERIES, resolve_host, PROMETHEUS_URL
 
 router = APIRouter()
 
-PROMETHEUS_URL = "http://prometheus:9090"
-
-# Same expressions the Grafana Linux Host Overview / Filesystem / Network
-# dashboards already use (monitoring/grafana/provisioning/dashboard-json/) -
-# `instance` is relabeled from the file_sd `hostname` label in
-# prometheus.yml, so it's already the readable hostname, not ip:port.
-_QUERIES = {
-    "cpu": '100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
-    "memory": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
-    # Root filesystem only - one number per host, matching the CPU/memory
-    # granularity, rather than one series per mountpoint.
-    "disk": (
-        '(1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay", mountpoint="/"} '
-        '/ node_filesystem_size_bytes{fstype!~"tmpfs|overlay", mountpoint="/"})) * 100'
-    ),
-    "network_rx": 'sum by (instance) (irate(node_network_receive_bytes_total{device!="lo"}[5m]))',
-    "network_tx": 'sum by (instance) (irate(node_network_transmit_bytes_total{device!="lo"}[5m]))',
-}
-
-
-async def _range_query(client: httpx.AsyncClient, expr: str, start: float, end: float, step: str) -> dict:
-    resp = await client.get(
-        f"{PROMETHEUS_URL}/api/v1/query_range",
-        params={"query": expr, "start": start, "end": end, "step": step},
-    )
-    resp.raise_for_status()
-    return resp.json()
+# Legacy response keys remain stable for Wallboard and reviewed MCP clients.
+_METRICS = ("cpu", "memory", "disk", "network_rx", "network_tx")
 
 
 async def _instant_query(client: httpx.AsyncClient, expr: str) -> dict:
@@ -40,44 +17,32 @@ async def _instant_query(client: httpx.AsyncClient, expr: str) -> dict:
     return resp.json()
 
 
-@router.get("/metrics/hosts")
+@router.get("/metrics/hosts", dependencies=[Depends(require_role("viewer"))])
 async def host_metrics(
-    minutes: int = Query(default=60, ge=5, le=1440), instance: str | None = None
+    minutes: int = Query(default=60, ge=5, le=10080), instance: str | None = None,
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """
-    Per-host CPU/memory/disk/network utilization over time, straight from
-    Prometheus - powers the native Fleet Metrics charts on the Monitoring
-    page (an alternative to the embedded Grafana dashboards below them).
-    `instance` optionally narrows the response to a single host (used by
-    the per-host detail view and the wallboard's focused mode) - filtered
-    after the fact rather than injected into the PromQL, since these
-    expressions' shapes vary too much to safely string-splice a label
-    matcher into all of them. At homelab scale (a handful of hosts) the
-    extra query cost of always pulling every host is negligible. Degrades
-    gracefully like /api/logs: available=false rather than raising if
-    Prometheus is unreachable.
-    """
-    end = time.time()
-    start = end - minutes * 60
-    step = "60s" if minutes <= 180 else "300s"
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            results: dict[str, list[dict]] = {}
-            for metric, expr in _QUERIES.items():
-                data = await _range_query(client, expr, start, end, step)
-                series = []
-                for result in data.get("data", {}).get("result", []):
-                    inst = result.get("metric", {}).get("instance", "unknown")
-                    if instance and inst != instance:
-                        continue
-                    points = [[float(ts), float(v)] for ts, v in result.get("values", [])]
-                    series.append({"instance": inst, "points": points})
-                results[metric] = series
-    except (httpx.HTTPError, ValueError):
-        return {"available": False, "cpu": [], "memory": [], "disk": [], "network_rx": [], "network_tx": []}
-
-    return {"available": True, **results}
+    """Compatibility response for Wallboard; inventory bound, no unscoped targets."""
+    hosts, _ = await inventory(db)
+    if instance is not None:
+        selected = await resolve_host(db, hostname=instance)
+        hosts = [h for h in hosts if h.id == selected.id]
+    batch = await range_batch(HOST_QUERIES, minutes)
+    bound = bind_hosts(batch, hosts)
+    result = {key: [] for key in _METRICS}
+    for host in hosts:
+        for key in result:
+            series = bound[str(host.id)].get(key, [])
+            if key == "disk":
+                series = [s for s in series if s["labels"].get("mountpoint") == "/"]
+            if key.startswith("network_") and series:
+                totals = {}
+                for series_item in series:
+                    for timestamp, value in series_item["points"]:
+                        totals[timestamp] = totals.get(timestamp, 0) + value
+                series = [{"points": sorted(totals.items())}]
+            result[key].extend({"instance": host.hostname, "points": s["points"]} for s in series)
+    return {"available": not batch["errors"], **result}
 
 
 @router.get("/metrics/services")

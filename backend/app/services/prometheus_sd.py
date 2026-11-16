@@ -20,6 +20,7 @@ def write_node_exporter_targets(hosts: list[Host]) -> None:
         {
             "targets": [f"{host.monitoring_ip_address or host.ip_address}:{NODE_EXPORTER_PORT}"],
             "labels": {
+                "host_id": str(host.id),
                 "hostname": host.hostname,
                 "environment": host.environment,
                 "criticality": host.criticality,

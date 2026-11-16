@@ -1,4 +1,5 @@
 import json
+import uuid
 import os
 import re
 import shutil
@@ -7,9 +8,10 @@ from datetime import datetime, timezone
 
 import ansible_runner
 import yaml
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.models.container import Container
+from app.services.container_inventory import monitoring_metadata, runtime_id, runtime_stats
 from app.models.host import Host, HostOnboardingStep
 from app.models.job import AnsibleEvent, AnsibleJob
 from app.models.patch import Patch, PatchScan
@@ -195,15 +197,30 @@ def _store_container_inventory(db, payloads: dict[str, dict]) -> None:
     a time instead of the whole table.
     """
     for hostname, payload in payloads.items():
+        # Failed discovery must preserve the last good inventory.
+        if not payload.get("ok", True):
+            continue
+        snapshots = []
+        for stats_line in payload.get("stats") or []:
+            try:
+                snapshots.append(json.loads(stats_line))
+            except (ValueError, TypeError):
+                continue
         seen_names: set[str] = set()
+        parse_failed = False
         for line in payload.get("containers") or []:
             try:
                 inspect = json.loads(line)
             except (ValueError, TypeError):
+                parse_failed = True
+                continue
+            if not isinstance(inspect, dict) or not runtime_id(inspect):
+                parse_failed = True
                 continue
 
             name = (inspect.get("Name") or "").lstrip("/")
             if not name:
+                parse_failed = True
                 continue
             state = inspect.get("State") or {}
             health = (state.get("Health") or {}).get("Status")
@@ -219,14 +236,22 @@ def _store_container_inventory(db, payloads: dict[str, dict]) -> None:
             row.status = state.get("Status") or "unknown"
             row.health = health
             row.restart_count = inspect.get("RestartCount") or 0
+            if row.runtime_id and row.runtime_id != runtime_id(inspect):
+                row.id = uuid.uuid4()
+            row.runtime_id = runtime_id(inspect)
+            row.monitoring_metadata = monitoring_metadata(inspect)
+            row.monitoring_metadata["runtime_stats"] = runtime_stats(row.runtime_id, snapshots)
             row.last_seen = _now()
 
-        if seen_names:
+        if not parse_failed and (seen_names or payload.get("ok") is True):
             stale = db.execute(
                 select(Container).where(Container.hostname == hostname, Container.name.not_in(seen_names))
             ).scalars().all()
             for row in stale:
                 db.delete(row)
+        host = db.execute(select(Host).where(Host.hostname == hostname)).scalar_one_or_none()
+        if host is not None and not parse_failed:
+            host.container_inventory_at = _now()
         db.commit()
 
 
@@ -242,6 +267,19 @@ def _enqueue_followup_patch_check(db, parent_job_id: str, hosts: list[Host]) -> 
     db.add(job)
     db.commit()
     run_playbook.delay(str(job.id), [str(h.id) for h in hosts], "patch-check.yml", None, {})
+
+
+def _claim_job(db, job_id: str, task_id: str | None) -> bool:
+    """A job already finished or cancelled must not start, for instance a queued
+    task delivered after the orphan reaper closed it. "running" stays claimable
+    because a task redelivered after a lost worker continues the same job."""
+    claimed = db.execute(
+        update(AnsibleJob)
+        .where(AnsibleJob.id == job_id, AnsibleJob.status.in_(("queued", "running")))
+        .values(status="running", celery_task_id=task_id, started_at=_now())
+    ).rowcount
+    db.commit()
+    return bool(claimed)
 
 
 @celery_app.task(bind=True, name="worker.tasks.run_playbook")
@@ -356,11 +394,11 @@ def run_playbook(
                     "failures": (event_data.get("failures") or {}).get(host_name, 0),
                 }
 
+    if not _claim_job(db, job_id, self.request.id):
+        print(f"[run_playbook] job {job_id} is already closed, not starting it", flush=True)
+        db.close()
+        return
     job = db.execute(select(AnsibleJob).where(AnsibleJob.id == job_id)).scalar_one()
-    job.status = "running"
-    job.celery_task_id = self.request.id
-    job.started_at = _now()
-    db.commit()
 
     hosts = db.execute(select(Host).where(Host.id.in_(host_ids))).scalars().all()
     inventory = build_inventory(hosts)

@@ -2,7 +2,9 @@
 
 The application license does not replace dependency licenses. Python requirements, the npm lockfile and Dockerfiles identify the dependencies and base images used by each component. Preserve their license notices when distributing built images.
 
-`frontend/src/components/ops-floor/three/land.json` identifies itself as Natural Earth's `ne_110m_land` geographic dataset. Natural Earth publishes its map data in the public domain: https://www.naturalearthdata.com/about/terms-of-use/
+`frontend/src/lib/worldMap.ts` is generated from Natural Earth 110m country outlines (via `world-atlas` 2.0.2). Natural Earth publishes its map data in the public domain: https://www.naturalearthdata.com/about/terms-of-use/
+
+The Ops Floor uses the Silkscreen font (`frontend/src/components/ops-floor/fonts/`, from `@fontsource/silkscreen` 5.1.0) under the SIL Open Font License 1.1; the license text is in `OFL.txt` beside the font files.
 
 The optional GeoIP database is not included. Obtain an appropriate database separately and follow its provider's redistribution and attribution requirements.
 

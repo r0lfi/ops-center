@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Fragment, useEffect, useState } from "react";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { JobOutput } from "@/components/jobs/JobOutput";
 import { PatchGroupsSection } from "@/components/patching/PatchGroupsSection";
 import { Badge } from "@/components/ui/badge";
@@ -14,14 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api, type Host, type PatchScan } from "@/lib/api";
-
-const SEVERITY_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = {
-  critical: "critical",
-  important: "critical",
-  moderate: "warning",
-  low: "ok",
-  unknown: "unknown",
-};
+import { severityVariant } from "@/lib/severity";
+import { formatDateTime } from "@/lib/format";
 
 interface ConfirmState {
   host: Host;
@@ -67,14 +62,14 @@ export default function Patching() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between"><h1 className="text-2xl font-semibold">Patching</h1><Button asChild variant="outline"><Link to="/patching/reports">Patch reports</Link></Button></div>
+      <PageHeader title="Patching" actions={<><Button asChild variant="outline"><Link to="/patching/reports">Patch reports</Link></Button></>} />
 
       <PatchGroupsSection />
 
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="ops-card-table w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Host</th>
@@ -92,7 +87,7 @@ export default function Patching() {
                 return (
                   <Fragment key={host.id}>
                     <tr className="border-b border-border hover:bg-accent/50">
-                      <td className="px-4 py-3">
+                      <td data-label="Host" className="px-4 py-3">
                         <button
                           className="font-medium text-primary hover:underline"
                           onClick={() => setExpanded(isExpanded ? null : host.id)}
@@ -100,22 +95,22 @@ export default function Patching() {
                           {host.hostname}
                         </button>
                       </td>
-                      <td className="px-4 py-3">{scan?.pending_count ?? "-"}</td>
-                      <td className="px-4 py-3">
+                      <td data-label="Pending" className="px-4 py-3">{scan?.pending_count ?? "-"}</td>
+                      <td data-label="Security" className="px-4 py-3">
                         {scan && scan.pending_security_count > 0 ? (
                           <Badge variant="warning">{scan.pending_security_count}</Badge>
                         ) : (
                           (scan?.pending_security_count ?? "-")
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td data-label="Reboot" className="px-4 py-3">
                         {scan?.reboot_required && <Badge variant="warning">required</Badge>}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {scan?.completed_at ? new Date(scan.completed_at).toLocaleString() : "never"}
+                      <td data-label="Last scan" className="px-4 py-3 text-muted-foreground">
+                        {scan?.completed_at ? formatDateTime(scan.completed_at) : "never"}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
+                      <td data-label="Actions" className="px-4 py-3">
+                        <div className="flex flex-wrap justify-end gap-2">
                           <Button size="sm" variant="outline" onClick={() => handleCheck(host)}>
                             Check
                           </Button>
@@ -159,7 +154,7 @@ export default function Patching() {
                                     <td className="py-1 pr-4 font-mono">{p.package_name}</td>
                                     <td className="py-1 pr-4 font-mono">{p.fixed_version ?? "-"}</td>
                                     <td className="py-1 pr-4">
-                                      <Badge variant={SEVERITY_VARIANT[p.severity] ?? "unknown"}>
+                                      <Badge variant={severityVariant(p.severity)}>
                                         {p.severity}
                                       </Badge>
                                     </td>

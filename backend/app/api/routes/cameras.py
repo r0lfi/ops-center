@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.schemas.cameras import CameraStatus
-from app.services.auth import decode_access_token
+from app.api.deps import user_for_token
+from app.db.session import async_session_factory
 from app.services.redis_client import get_redis_client
 
 router = APIRouter()
@@ -73,8 +74,10 @@ async def get_cameras_status() -> list[CameraStatus]:
 
 @stream_router.get("/cameras/{name}/stream.mjpeg")
 async def stream_camera(name: str, token: str):
-    if decode_access_token(token) is None:
-        raise HTTPException(status_code=401, detail="invalid or expired token")
+    # Checked once with a short-lived session; the database session is not held for the stream.
+    async with async_session_factory() as db:
+        if await user_for_token(db, token) is None:
+            raise HTTPException(status_code=401, detail="invalid or expired token")
     if name not in _STREAMED_CAMERAS:
         raise HTTPException(status_code=404, detail="no live stream configured for this camera")
 

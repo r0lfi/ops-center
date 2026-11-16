@@ -12,14 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { api, type SecurityAdvisory } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-
-const SEVERITY_VARIANT: Record<string, "ok" | "warning" | "critical" | "unknown"> = {
-  critical: "critical",
-  high: "critical",
-  medium: "warning",
-  low: "ok",
-  unknown: "unknown",
-};
+import { severityVariant } from "@/lib/severity";
+import { formatDate } from "@/lib/format";
 
 export function AdvisoryDetailDialog({ advisory, onClose }: { advisory: SecurityAdvisory; onClose: () => void }) {
   const { hasRole } = useAuth();
@@ -36,11 +30,11 @@ export function AdvisoryDetailDialog({ advisory, onClose }: { advisory: Security
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <div>
             <p className="text-xs text-muted-foreground">Severity</p>
-            <Badge variant={SEVERITY_VARIANT[advisory.severity] ?? "unknown"}>{advisory.severity}</Badge>
+            <Badge variant={severityVariant(advisory.severity)}>{advisory.severity}</Badge>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Published</p>
-            <p>{advisory.published_at ? new Date(advisory.published_at).toLocaleDateString() : "-"}</p>
+            <p>{advisory.published_at ? formatDate(advisory.published_at) : "-"}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Packages</p>

@@ -1932,6 +1932,25 @@
                   }
                 ],
                 "title": "Container Name"
+              },
+              "search": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Search"
+              },
+              "limit": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 1,
+                "default": 1000,
+                "title": "Limit"
               }
             }
           }
@@ -3342,7 +3361,8 @@
               "host": {
                 "anyOf": [
                   {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 255
                   },
                   {
                     "type": "null"
@@ -3350,16 +3370,59 @@
                 ],
                 "title": "Host"
               },
+              "host_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Host Id"
+              },
+              "container_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Container Id"
+              },
               "service": {
                 "anyOf": [
                   {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 255
                   },
                   {
                     "type": "null"
                   }
                 ],
                 "title": "Service"
+              },
+              "search": {
+                "type": "string",
+                "maxLength": 500,
+                "default": "",
+                "title": "Search"
+              },
+              "level": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 30
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Level"
               },
               "minutes": {
                 "type": "integer",
@@ -3370,12 +3433,37 @@
               },
               "limit": {
                 "type": "integer",
-                "maximum": 5000,
+                "maximum": 500,
                 "minimum": 1,
-                "default": 500,
+                "default": 200,
                 "title": "Limit"
+              },
+              "end": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "End"
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cursor"
               }
-            }
+            },
+            "required": []
           }
         }
       }
@@ -3397,7 +3485,7 @@
             "properties": {
               "minutes": {
                 "type": "integer",
-                "maximum": 1440,
+                "maximum": 10080,
                 "minimum": 5,
                 "default": 60,
                 "title": "Minutes"
@@ -3413,7 +3501,8 @@
                 ],
                 "title": "Instance"
               }
-            }
+            },
+            "required": []
           }
         }
       }
@@ -4158,9 +4247,37 @@
               },
               "content": {
                 "type": "string",
-                "maxLength": 2000,
+                "maxLength": 8000,
                 "minLength": 1,
                 "title": "Content"
+              },
+              "category": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Category"
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "fact",
+                      "plan",
+                      "history"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Kind"
               }
             },
             "type": "object",
@@ -4571,11 +4688,15 @@
               },
               "max_tool_calls": {
                 "type": "integer",
+                "maximum": 256.0,
+                "minimum": 1.0,
                 "title": "Max Tool Calls",
-                "default": 8
+                "default": 64
               },
               "max_execution_seconds": {
                 "type": "integer",
+                "maximum": 1800.0,
+                "minimum": 10.0,
                 "title": "Max Execution Seconds",
                 "default": 90
               },
@@ -4583,6 +4704,38 @@
                 "type": "boolean",
                 "title": "Enabled",
                 "default": true
+              },
+              "runtime": {
+                "type": "string",
+                "enum": [
+                  "native",
+                  "external"
+                ],
+                "title": "Runtime",
+                "default": "native"
+              },
+              "allowed_dispatch_targets": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string",
+                      "maxLength": 50,
+                      "minLength": 1,
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "type": "array",
+                    "maxItems": 50
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Allowed Dispatch Targets"
+              },
+              "personal": {
+                "type": "boolean",
+                "title": "Personal",
+                "default": false
               }
             },
             "type": "object",
@@ -4764,7 +4917,9 @@
               "max_tool_calls": {
                 "anyOf": [
                   {
-                    "type": "integer"
+                    "type": "integer",
+                    "maximum": 256.0,
+                    "minimum": 1.0
                   },
                   {
                     "type": "null"
@@ -4775,7 +4930,9 @@
               "max_execution_seconds": {
                 "anyOf": [
                   {
-                    "type": "integer"
+                    "type": "integer",
+                    "maximum": 1800.0,
+                    "minimum": 10.0
                   },
                   {
                     "type": "null"
@@ -4793,6 +4950,24 @@
                   }
                 ],
                 "title": "Enabled"
+              },
+              "allowed_dispatch_targets": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string",
+                      "maxLength": 50,
+                      "minLength": 1,
+                      "pattern": "^[a-z][a-z0-9_-]*$"
+                    },
+                    "type": "array",
+                    "maxItems": 50
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Allowed Dispatch Targets"
               }
             },
             "type": "object",
@@ -4851,6 +5026,89 @@
       }
     },
     {
+      "name": "ops_report_agent_status",
+      "method": "POST",
+      "path": "/api/ai/agents/{agent_id}/report",
+      "scope": "ops:ai:write",
+      "minimum_role": "operator",
+      "description": "Report the live state of an external agent (runtime external). Requires human approval in Ops Center unless an administrator pre-approved it for the client; returns a request ID.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "format": "uuid",
+                "title": "Agent Id"
+              }
+            },
+            "required": [
+              "agent_id"
+            ]
+          },
+          "body": {
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "working",
+                  "error"
+                ],
+                "title": "Status"
+              },
+              "activity": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Activity"
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Target"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "title": "AgentStatusReport",
+            "description": "Live state reported by an external agent (runtime=\"external\")."
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128,
+            "description": "Stable identifier for one intended change. Reuse to retrieve the same request."
+          }
+        },
+        "required": [
+          "path",
+          "body",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
       "name": "ops_ask_ops_ai",
       "method": "POST",
       "path": "/api/ai/ask",
@@ -4885,13 +5143,72 @@
                   }
                 ],
                 "title": "Conversation Key"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "page": {
+                        "type": "string",
+                        "maxLength": 80,
+                        "minLength": 1,
+                        "title": "Page"
+                      },
+                      "path": {
+                        "type": "string",
+                        "maxLength": 300,
+                        "minLength": 1,
+                        "pattern": "^/",
+                        "title": "Path"
+                      },
+                      "items": {
+                        "items": {
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "title": "Label"
+                            },
+                            "value": {
+                              "type": "string",
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "title": "Value"
+                            }
+                          },
+                          "type": "object",
+                          "required": [
+                            "label",
+                            "value"
+                          ],
+                          "title": "AskContextItem"
+                        },
+                        "type": "array",
+                        "maxItems": 12,
+                        "title": "Items"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "page",
+                      "path"
+                    ],
+                    "title": "AskContext",
+                    "description": "What the user was looking at: the page, its filters and selected object ids.\n\nIdentifiers only, never page data: the agent reads data with its own\ntools and permissions. Shown to the user before sending, removable."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "type": "object",
             "required": [
               "message"
             ],
-            "title": "AskRequest"
+            "title": "AskWithContextRequest",
+            "description": "Ask Ops AI from the web UI, optionally with the page the question came from."
           },
           "idempotency_key": {
             "type": "string",
@@ -4927,6 +5244,23 @@
                 "minimum": 1,
                 "default": 50,
                 "title": "Limit"
+              },
+              "agent": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Agent"
+              },
+              "mine": {
+                "type": "boolean",
+                "default": false,
+                "title": "Mine"
               }
             }
           }
@@ -5259,6 +5593,14 @@
                 "maxItems": 50,
                 "title": "Allowed Countries"
               },
+              "trusted_ips": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 100,
+                "title": "Trusted Ips"
+              },
               "trusted_dns": {
                 "items": {
                   "type": "string"
@@ -5327,6 +5669,82 @@
     "DELETE /api/ai/providers/{provider_id}/key": "Credential material and credential administration remain human-only.",
     "POST /api/ai/actions/{action_id}/approve": "Approval authority remains human-only.",
     "POST /api/ai/actions/{action_id}/reject": "Approval authority remains human-only.",
-    "POST /api/integrations/talk/webhook": "Signed integration ingress is not an operational tool."
+    "POST /api/integrations/talk/webhook": "Signed integration ingress is not an operational tool.",
+    "GET /api/incidents": "Human incident workflow and notification policy; not exposed to MCP agents.",
+    "GET /api/incidents/{ident}": "Human incident workflow and notification policy; not exposed to MCP agents.",
+    "POST /api/incidents/{ident}/status": "Human incident workflow and notification policy; not exposed to MCP agents.",
+    "GET /api/settings/incidents": "Human incident workflow and notification policy; not exposed to MCP agents.",
+    "PUT /api/settings/incidents": "Human incident workflow and notification policy; not exposed to MCP agents.",
+    "GET /api/ai/budget": "Human budget status; money limits cannot be changed or interpreted as tool permissions.",
+    "GET /api/ai/collaboration/experiences": "Owner-private collaboration experience archive; not exposed through general MCP tools.",
+    "GET /api/monitoring/fleet": "Native web Monitoring composition; reuse the separately reviewed inventory, metrics, logs and Docker MCP tools.",
+    "GET /api/monitoring/containers/{container_id}": "Native web Monitoring composition; reuse the separately reviewed inventory, metrics, logs and Docker MCP tools.",
+    "GET /api/monitoring/containers/{container_id}/stats": "Native web Monitoring composition; reuse the separately reviewed inventory, metrics, logs and Docker MCP tools.",
+    "GET /api/monitoring/containers/{container_id}/events": "Native web Monitoring composition; reuse the separately reviewed inventory, metrics, logs and Docker MCP tools.",
+    "GET /api/ai/memory/suggestions": "Personal memory suggestions are reviewed by their owner in the web UI.",
+    "POST /api/ai/memory/suggestions/{suggestion_id}/accept": "Personal memory suggestions are reviewed by their owner in the web UI.",
+    "POST /api/ai/memory/suggestions/{suggestion_id}/reject": "Personal memory suggestions are reviewed by their owner in the web UI.",
+    "POST /api/ai/memory/suggestions/accept-all": "Personal memory suggestions are reviewed by their owner in the web UI.",
+    "GET /api/ai/imports": "Nova imports are owner-only uploads reviewed in the web UI.",
+    "POST /api/ai/imports/preview": "Nova imports are owner-only uploads reviewed in the web UI.",
+    "POST /api/ai/imports": "Nova imports are owner-only uploads reviewed in the web UI.",
+    "GET /api/ai/imports/suggest-estimate": "Nova imports are owner-only uploads reviewed in the web UI.",
+    "POST /api/ai/imports/suggest": "Nova imports are owner-only uploads reviewed in the web UI.",
+    "DELETE /api/ai/imports/{source}": "Nova imports are owner-only uploads reviewed in the web UI.",
+    "PATCH /api/ai/memory/{memory_id}": "Owner-only memory curation (edit, merge, duplicates, history, restore) happens in the web UI.",
+    "POST /api/ai/memory/merge": "Owner-only memory curation (edit, merge, duplicates, history, restore) happens in the web UI.",
+    "GET /api/ai/memory/duplicates": "Owner-only memory curation (edit, merge, duplicates, history, restore) happens in the web UI.",
+    "GET /api/ai/memory/history": "Owner-only memory curation (edit, merge, duplicates, history, restore) happens in the web UI.",
+    "POST /api/ai/memory/history/{version_id}/restore": "Owner-only memory curation (edit, merge, duplicates, history, restore) happens in the web UI.",
+    "POST /api/ai/memory/organize": "Import & Organize is an owner-only review in the web UI; nothing is saved without it.",
+    "GET /api/ai/memory/organize": "Import & Organize is an owner-only review in the web UI; nothing is saved without it.",
+    "GET /api/ai/memory/organize/{job_id}": "Import & Organize is an owner-only review in the web UI; nothing is saved without it.",
+    "POST /api/ai/memory/organize/{job_id}/retry": "Import & Organize is an owner-only review in the web UI; nothing is saved without it.",
+    "DELETE /api/ai/memory/organize/{job_id}": "Import & Organize is an owner-only review in the web UI; nothing is saved without it.",
+    "POST /api/ai/memory/organize/{job_id}/apply": "Import & Organize is an owner-only review in the web UI; nothing is saved without it.",
+    "GET /api/ai/nova/routines": "Nova routines are the owner's private schedule, managed only in the web UI; no agent may create or start them.",
+    "POST /api/ai/nova/routines": "Nova routines are the owner's private schedule, managed only in the web UI; no agent may create or start them.",
+    "PATCH /api/ai/nova/routines/{routine_id}": "Nova routines are the owner's private schedule, managed only in the web UI; no agent may create or start them.",
+    "DELETE /api/ai/nova/routines/{routine_id}": "Nova routines are the owner's private schedule, managed only in the web UI; no agent may create or start them.",
+    "POST /api/ai/nova/routines/{routine_id}/run": "Nova routines are the owner's private schedule, managed only in the web UI; no agent may create or start them.",
+    "PUT /api/ai/nova/proactive": "Nova routines are the owner's private schedule, managed only in the web UI; no agent may create or start them.",
+    "GET /api/ai/nova/data-sources": "Nova data sources are the owner's private calendar and home data, shown only to the owner in the web UI.",
+    "POST /api/ai/nova/data-sources/test": "Nova data sources are the owner's private calendar and home data, shown only to the owner in the web UI.",
+    "GET /api/ai/tasks/{task_id}/board": "Investigation board and resume are part of the owner's web task view.",
+    "POST /api/ai/tasks/{task_id}/resume": "Investigation board and resume are part of the owner's web task view.",
+    "GET /api/ai/proposals": "Tool proposals are human decisions in the web UI; agents create them with propose_tool.",
+    "POST /api/ai/proposals/{proposal_id}/approve": "Tool proposals are human decisions in the web UI; agents create them with propose_tool.",
+    "POST /api/ai/proposals/{proposal_id}/reject": "Tool proposals are human decisions in the web UI; agents create them with propose_tool.",
+    "POST /api/ai/proposals/{proposal_id}/deployed": "Tool proposals are human decisions in the web UI; agents create them with propose_tool.",
+    "GET /api/ai/proposals/{proposal_id}/patch": "Tool proposals are human decisions in the web UI; agents create them with propose_tool.",
+    "GET /api/ai/developer/overview": "Developer change review and release records are human decisions; agents cannot read or decide them.",
+    "GET /api/ai/developer/changes/{proposal_id}": "Developer change review and release records are human decisions; agents cannot read or decide them.",
+    "POST /api/ai/proposals/{proposal_id}/review": "Developer change review and release records are human decisions; agents cannot read or decide them.",
+    "POST /api/ai/proposals/{proposal_id}/release-outcome": "Developer change review and release records are human decisions; agents cannot read or decide them.",
+    "POST /api/auth/logout": "Browser session management stays with people signed in to the web UI.",
+    "POST /api/auth/reauth": "Browser session management stays with people signed in to the web UI.",
+    "GET /api/auth/sessions": "Browser session management stays with people signed in to the web UI.",
+    "DELETE /api/auth/sessions/{session_id}": "Browser session management stays with people signed in to the web UI.",
+    "POST /api/users/{user_id}/sessions/{session_id}/revoke": "Browser session management stays with people signed in to the web UI.",
+    "POST /api/users/{user_id}/sessions/revoke-all": "Browser session management stays with people signed in to the web UI.",
+    "GET /api/ai-traffic/blocked": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/captures": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/captures/{capture_id}/download": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/collector/captures": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/events": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/events/{event_id}": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/export": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/flow": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/map": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/overview": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/settings": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/sources": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/traces": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "GET /api/ai-traffic/traces/{trace_id}": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "POST /api/ai-traffic/captures": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "POST /api/ai-traffic/collector/captures/{capture_id}": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "POST /api/ai-traffic/ingest": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "PUT /api/ai-traffic/settings": "AI Traffic Monitor watches the agents; agents do not read or steer their own monitoring. The collector feed uses its own token.",
+    "PUT /api/ai/budget": "Money limits are set by an administrator with a confirmed password in the web UI; agents never change them."
   }
 }

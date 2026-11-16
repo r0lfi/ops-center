@@ -30,7 +30,7 @@ from app.mcp.common import (
     public_url,
     validate_redirect,
 )
-from app.mcp.catalog import TOOLS, SCOPES, permitted
+from app.mcp.catalog import AUTO_APPROVABLE, TOOLS, SCOPES, permitted
 from app.mcp import broker
 from app.services.auth import role_at_least
 
@@ -52,6 +52,8 @@ class ClientWrite(Strict):
     scopes: list[str] = Field(min_length=1, max_length=100)
     allowed_tools: list[str] = Field(min_length=1, max_length=200)
     allowed_user_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+    # Administrator pre-approval; only tools in AUTO_APPROVABLE qualify.
+    auto_approve_tools: list[str] = Field(default_factory=list, max_length=10)
     enabled: bool = True
 
 
@@ -83,6 +85,7 @@ def client_view(c):
             "scopes",
             "allowed_tools",
             "allowed_user_ids",
+            "auto_approve_tools",
             "enabled",
         )
     }
@@ -128,6 +131,7 @@ async def settings(
         "public_url": url,
         "scopes": SCOPES,
         "tools": list(TOOLS.values()),
+        "auto_approvable": sorted(AUTO_APPROVABLE),
     }
 
 
@@ -177,6 +181,8 @@ async def write_client(db, user, payload, ident=None):
         raise HTTPException(400, "Choose known scopes including ops:connect")
     if any(TOOLS[t]["scope"] not in payload.scopes for t in payload.allowed_tools):
         raise HTTPException(400, "Tool scopes must be included")
+    if set(payload.auto_approve_tools) - (AUTO_APPROVABLE & set(payload.allowed_tools)):
+        raise HTTPException(400, "Only selected AI task tools can be pre-approved")
     try:
         redirects = [validate_redirect(v) for v in payload.redirect_uris]
     except ValueError as exc:
@@ -221,6 +227,47 @@ async def grants(
     if user.role != "admin":
         query = query.where(MCPGrant.user_id == user.id)
     return [grant_view(g) for g in (await db.execute(query)).scalars()]
+
+
+@router.get("/agent-access")
+async def agent_access(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Per agent and task owner: which enabled MCP tools are usable right now.
+
+    An agent is offered an MCP tool only while a live grant covers it, so an
+    expired or missing grant silently narrows what it can do. This makes that
+    state visible. Admins see every user; others see their own access.
+    """
+    from app.models.ai import AIAgent
+
+    state = await db.get(MCPSettings, 1)
+    stamp = now()
+    agents = (await db.execute(select(AIAgent).where(AIAgent.enabled.is_(True), AIAgent.runtime == "native",
+                                                  AIAgent.personal.is_not(True)).order_by(AIAgent.name))).scalars().all()
+    query = select(MCPGrant).where(MCPGrant.agent_id.is_not(None))
+    if user.role != "admin":
+        query = query.where(MCPGrant.user_id == user.id)
+    grants = (await db.execute(query.order_by(MCPGrant.expires_at.desc()))).scalars().all()
+    names = {u.id: u.username for u in (await db.execute(select(User))).scalars()}
+    rows = []
+    for agent in agents:
+        wanted = [t for t in agent.allowed_tools or [] if t in TOOLS]
+        if not wanted:
+            continue
+        owners = {g.user_id for g in grants if g.agent_id == agent.id} | {user.id}
+        for owner in owners:
+            mine = [g for g in grants if g.agent_id == agent.id and g.user_id == owner]
+            live = [g for g in mine if g.revoked_at is None and g.expires_at > stamp]
+            granted = sorted({t for g in live for t in g.allowed_tools or []} & set(wanted))
+            expired = [g for g in mine if g.revoked_at is None and g.expires_at <= stamp]
+            missing = [t for t in wanted if t not in granted]
+            status = ("disabled" if not (state and state.enabled) else "active" if not missing
+                      else "partial" if granted else "expired" if expired else "missing")
+            rows.append({"agent_id": str(agent.id), "agent": agent.name, "agent_slug": agent.slug,
+                         "user_id": str(owner), "username": names.get(owner), "status": status,
+                         "enabled_tools": wanted, "granted_tools": granted, "missing_tools": missing,
+                         "expires_at": max((g.expires_at for g in live), default=None),
+                         "expired_at": max((g.expires_at for g in expired), default=None)})
+    return {"service_enabled": bool(state and state.enabled), "rows": rows}
 
 
 @router.delete("/grants/{grant_id}")

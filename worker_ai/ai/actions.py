@@ -125,7 +125,7 @@ def request_approval(
     db.refresh(action)
 
     set_agent_state(
-        db, agent, "waiting", f"Waiting for approval: {label}", hostname, task_id
+        db, agent, "waiting", f"Waiting for approval: {label}", hostname, task_id, event="approval_requested", tool=tool_name
     )
 
     return {

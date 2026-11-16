@@ -1,0 +1,18 @@
+[package]
+name = "ai-traffic-collector"
+version = "0.1.0"
+edition = "2021"
+description = "Passive, read-only network observer for Ops Center's AI containers (conntrack events + header capture)"
+publish = false
+
+[dependencies]
+libc = "0.2.169"
+pcap = "2.2.0"
+serde_json = "1.0.135"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

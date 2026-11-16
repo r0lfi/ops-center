@@ -26,7 +26,7 @@ for (const profile of profiles) {
       await page.screenshot({ path: test.info().outputPath("apple-install-help.png"), fullPage: true });
       await page.getByRole("button", { name: "Done", exact: true }).click();
       await expect(page.getByLabel("Password", { exact: true })).toHaveValue("unsent-fixture");
-      await page.evaluate(() => localStorage.setItem("ops_center_token", "pwa-test-only"));
+      await page.evaluate(() => (document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
       await page.goto("/servers");
       await expect(page.getByRole("heading", { name: "Servers", exact: true })).toBeVisible();
       await expect(install).toBeVisible();

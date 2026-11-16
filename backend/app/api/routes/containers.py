@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import require_role
+from app.api.deps import require_role, user_for_token
 from app.core.config import get_settings
 from app.db.session import async_session_factory, get_db
 from app.models.container import Container, DockerEvent, Registry, Stack
@@ -42,7 +42,7 @@ from app.schemas.container import (
 from app.schemas.app_catalog import RenderTemplateResponse
 from app.schemas.vulnerability import ContainerVulnerabilityRead
 from app.services import registry_client, stack_discovery
-from app.services.auth import decode_access_token, role_at_least
+from app.services.auth import role_at_least
 from app.services.celery_client import get_celery_client
 from app.services.connectivity import _PinnedHostKeyClient, _resolve_secret
 from app.services.host_ops import get_host_by_hostname as _get_docker_host_or_404
@@ -208,13 +208,15 @@ async def _docker_volumes(hostname: str, db: AsyncSession) -> list[dict]:
     return result.get("volumes", [])
 
 
-async def _docker_container_logs(hostname: str, name: str, tail: int, db: AsyncSession) -> dict:
+async def _docker_container_logs(hostname: str, name: str, tail: int, db: AsyncSession, options: dict | None = None) -> dict:
     if not _DOCKER_NAME_RE.match(name):
         raise HTTPException(status_code=422, detail="not a valid container name")
     if hostname == _LOCAL_HOSTNAME:
-        return await _send_and_wait("security.tasks.container_logs", [name, tail], _ACTION_TIMEOUT)
+        args = [name, tail, options] if options else [name, tail]
+        return await _send_and_wait("security.tasks.container_logs", args, _ACTION_TIMEOUT)
     host = await _get_docker_host_or_404(db, hostname)
-    return await _run_remote_query(db, host, "docker-logs.yml", {"container_name": name, "tail_lines": tail})
+    return await _run_remote_query(db, host, "docker-logs.yml", {
+        "container_name": name, "tail_lines": tail, **(options or {})})
 
 
 async def _docker_container_stats(hostname: str, name: str, db: AsyncSession) -> dict:
@@ -282,7 +284,8 @@ async def _docker_host_summary(db: AsyncSession, host: Host) -> DockerHostRead:
     unhealthy = (
         await db.execute(
             select(func.count(Container.id)).where(
-                Container.hostname == host.hostname, Container.health == "unhealthy"
+                # Docker keeps the last health result after a container stops.
+                Container.hostname == host.hostname, Container.status == "running", Container.health == "unhealthy"
             )
         )
     ).scalar_one()
@@ -627,6 +630,13 @@ async def list_docker_volumes(hostname: str, db: AsyncSession = Depends(get_db))
 async def list_docker_events(
     hostname: str, event_type: str | None = None, limit: int = 200, db: AsyncSession = Depends(get_db)
 ) -> list[DockerEventRead]:
+    return await _list_docker_events(hostname, event_type, limit, db)
+
+
+async def _list_docker_events(
+    hostname: str, event_type: str | None = None, limit: int = 200, db: AsyncSession = Depends(get_db),
+    container_id: str | None = None, since: float | None = None, until: float | None = None,
+) -> list[DockerEventRead]:
     limit = max(1, min(limit, 1000))
 
     if hostname == _LOCAL_HOSTNAME:
@@ -636,6 +646,12 @@ async def list_docker_events(
         query = select(DockerEvent).where(DockerEvent.hostname == hostname)
         if event_type is not None:
             query = query.where(DockerEvent.event_type == event_type)
+        if container_id is not None:
+            query = query.where(DockerEvent.actor_id == container_id)
+        if since is not None:
+            query = query.where(DockerEvent.occurred_at >= datetime.fromtimestamp(since, timezone.utc))
+        if until is not None:
+            query = query.where(DockerEvent.occurred_at <= datetime.fromtimestamp(until, timezone.utc))
         query = query.order_by(DockerEvent.occurred_at.desc()).limit(limit)
         rows = (await db.execute(query)).scalars().all()
         return [
@@ -654,11 +670,17 @@ async def list_docker_events(
     # constraint Logs/Stats hit in Phase 1) - bounded one-shot window
     # instead, never persisted.
     host = await _get_docker_host_or_404(db, hostname)
-    result = await _run_remote_query(db, host, "docker-events.yml", {"since": "1h"})
+    result = await _run_remote_query(db, host, "docker-events.yml", {
+        "since": str(int(since)) if since is not None else "1h",
+        "until": str(int(until)) if until is not None else "", "container_id": container_id or ""})
+    if container_id is not None and result.get("ok") is False:
+        raise HTTPException(503, "Docker event source unavailable")
     events = []
     for raw in result.get("events", []):
         actor = raw.get("Actor") or {}
         time_value = raw.get("time")
+        if container_id is not None and not time_value:
+            continue  # A contextual event must carry its real source timestamp.
         occurred_at = (
             datetime.fromtimestamp(time_value, tz=timezone.utc) if time_value else datetime.now(timezone.utc)
         )
@@ -674,6 +696,8 @@ async def list_docker_events(
         )
     if event_type is not None:
         events = [e for e in events if e.event_type == event_type]
+    if container_id is not None:
+        events = [e for e in events if e.actor_id == container_id]
     events.sort(key=lambda e: e.occurred_at, reverse=True)
     return events[:limit]
 
@@ -1017,11 +1041,15 @@ async def container_console(websocket: WebSocket, hostname: str, name: str, shel
     already admin-gated.
     """
     token = websocket.query_params.get("token")
-    payload = decode_access_token(token) if token else None
-    if payload is None:
+    found = None
+    if token:
+        async with async_session_factory() as db:
+            found = await user_for_token(db, token)
+    if found is None:
         await websocket.close(code=4401)
         return
-    if not role_at_least(payload.get("role", ""), "admin"):
+    # The current database role decides, not the role copied into the token.
+    if not role_at_least(found[0].role, "admin"):
         await websocket.close(code=4403)
         return
     if not _DOCKER_NAME_RE.match(name):

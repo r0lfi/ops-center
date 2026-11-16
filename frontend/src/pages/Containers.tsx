@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { PageHeader } from "@/components/layout/PageHeader";
 import { MetricSparkline } from "@/components/monitoring/MetricSparkline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,21 +35,13 @@ export default function Containers() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Containers</h1>
-          <p className="text-sm text-muted-foreground">
-            Docker hosts registered in Ops Center. Open a host to manage its containers, images,
-            networks and volumes.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader title="Containers" description={<>Docker hosts registered in Ops Center. Open a host to manage its containers, images,
+            networks and volumes.</>} actions={<><div className="flex flex-wrap gap-2">
         <Button asChild><Link to="/containers/all">List all containers</Link></Button>
         <Button variant="outline" asChild>
           <Link to="/servers">Manage hosts</Link>
         </Button>
-        </div>
-      </div>
+        </div></>} />
 
       {hosts.length === 0 && (
         <Card>

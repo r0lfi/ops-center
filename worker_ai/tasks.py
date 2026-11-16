@@ -5,9 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from worker_ai.ai.agent_state import set_agent_state
-from worker_ai.ai.memory import memory_owner
+from worker_ai.ai.memory import memory_owner, incident_context
 from worker_ai.ai.runtime import TaskCancelled, run_agent
-from worker_ai.ai.tools.exec_tools import EXECUTORS
+from worker_ai.ai.tools.exec_tools import EXECUTORS, TOOL_APPROVAL_LEVEL
+from worker_ai.ai import board
 from worker_ai.celery_app import celery_app
 from worker_ai.db import SessionLocal
 
@@ -34,6 +35,8 @@ def _build_contextual_message(db: Session, conversation_key: str | None, new_mes
     if task is None:
         # No trusted ownership context: never retrieve history by a caller-supplied key alone.
         return new_message
+    if task.source == "incident":
+        return incident_context(db, task) + new_message
     conditions = [AITask.status == "completed", AITask.id != task.id, AITask.created_at <= task.created_at]
     if task.source == "web":
         if not task.owner_user_id:
@@ -125,12 +128,30 @@ def run_talk_task(self, task_id: str, room_token: str, backend: str, reply_to: s
 
 
 
+def _outcome(db, task, result) -> str:
+    """What the run established, for the task view (status says only that it ended)."""
+    reason = (getattr(result, "stop_reason", None) or "").lower()
+    if getattr(result, "partial", False) and ("budget" in reason or "access required" in reason):
+        return "blocked"
+    outcome = board.outcome(db, task.id, getattr(result, "partial", False))
+    if outcome == "completed" and any(t.get("tool") in TOOL_APPROVAL_LEVEL for t in result.tools_used or []):
+        return "waiting_for_approval"
+    return outcome
+
+
 def _run_agent_task(task_id: str, celery_task_id: str | None) -> bool:
     with SessionLocal() as db:
         task = db.execute(select(AITask).where(AITask.id == task_id).with_for_update()).scalar_one_or_none()
         if task is None or task.status != "queued":
             return
         agent = task.agent  # lazy-loaded relationship
+        if task.source == "routine" and not memory_owner(db, str(task.id)):
+            # The owner turned memory or proactive runs off, or paused/removed the routine, since it was queued.
+            task.status = "cancelled"
+            task.error_message = "Routine not run: proactive runs, memory or the routine were turned off."
+            task.completed_at = _now()
+            db.commit()
+            return
 
         task.status = "running"
         task.celery_task_id = celery_task_id
@@ -142,18 +163,26 @@ def _run_agent_task(task_id: str, celery_task_id: str | None) -> bool:
             # transition (and the matching Ops Floor event) for both this
             # top-level agent and any specialist it delegates to - see its
             # docstring and agent_state.set_agent_state.
-            contextual_message = _build_contextual_message(db, task.conversation_key, task.input_message, task)
+            message = task.input_message
+            if getattr(task, "resumed_from", None):
+                # Continue from the saved board in a fresh model context, not the old transcript.
+                previous = db.get(AITask, task.resumed_from)
+                if previous is not None and previous.owner_user_id == task.owner_user_id:
+                    message = board.resume_message(db, previous)
+            contextual_message = _build_contextual_message(db, task.conversation_key, message, task)
             result = run_agent(db, agent, contextual_message, task_id=str(task.id))
             db.refresh(task, with_for_update=True)
             if task.status == "cancelled":
                 raise TaskCancelled()
             task.response_message = result.text
+            task.error_message = getattr(result, "stop_reason", None) if getattr(result, "partial", False) else None
             # dict.fromkeys preserves first-seen order while deduping -
             # the Coordinator's own slug plus every delegated specialist.
             task.agents_used = list(dict.fromkeys(result.agents_used))
             task.tools_used = result.tools_used
             task.data_sources = list(dict.fromkeys(result.data_sources))
             task.status = "completed"
+            task.outcome = _outcome(db, task, result)
         except TaskCancelled:
             db.rollback()
             db.refresh(task)
@@ -168,15 +197,64 @@ def _run_agent_task(task_id: str, celery_task_id: str | None) -> bool:
             db.refresh(task, with_for_update=True)
             if task.status != "cancelled":
                 task.status = "failed"
+                task.outcome = "failed"
                 task.error_message = str(exc)
                 set_agent_state(db, agent, "error", "Collaboration investigation failed" if task.source == "collaboration" else str(exc), None, None if task.source == "collaboration" else str(task.id))
         finally:
             task.completed_at = _now()
+            if task.source == "development":
+                board.release_unfinished_proposal(db, task)
+            if task.source == "incident":
+                from app.models.incidents import Incident, IMEvent, IMInvestigation
+                link = db.scalar(select(IMInvestigation).where(IMInvestigation.task_id == task.id))
+                incident = db.get(Incident, link.incident_id) if link else None
+                if incident:
+                    db.add(IMEvent(incident_id=incident.id, actor="agent-investigation", status=incident.status,
+                        note=f"Automatic investigation {task.status}. Findings and action approvals are available to the investigation owner. Source state: {incident.source_state}; investigation completion does not establish a repair."))
             if task.started_at:
                 task.duration_ms = int((task.completed_at - task.started_at).total_seconds() * 1000)
             db.commit()
     return True
 
+
+
+@celery_app.task(name="worker_ai.tasks.nova_journal")
+def nova_journal(day: str | None = None, attempted: list[str] | None = None) -> dict:
+    """Nightly journal and memory suggestions for personal agents (see worker_ai/ai/journal.py)."""
+    from datetime import date
+    from worker_ai.ai.journal import run_journal
+
+    with SessionLocal() as db:
+        results = run_journal(db, date.fromisoformat(day) if day else None, attempted or ())
+    if "continue" in results:
+        nova_journal.apply_async(args=list(results["continue"]), queue="ai")
+    return results
+
+
+@celery_app.task(name="worker_ai.tasks.nova_import_suggestions")
+def nova_import_suggestions(owner_id: str, calls_before: int = 0) -> dict:
+    """Owner-confirmed suggestions from imported conversations (worker_ai/ai/import_suggestions.py)."""
+    import uuid
+    from worker_ai.ai.import_suggestions import run_import_suggestions
+
+    with SessionLocal() as db:
+        summary = run_import_suggestions(db, uuid.UUID(owner_id), calls_before)
+    if "continue" in summary:
+        nova_import_suggestions.apply_async(args=[owner_id, summary["continue"]], queue="ai")
+    return summary
+
+
+@celery_app.task(name="worker_ai.tasks.organize_memory")
+def organize_memory(job_id: str) -> str:
+    """Import & Organize analysis of one job (worker_ai/ai/organize.py)."""
+    import uuid
+    from worker_ai.ai.organize import run_organize
+
+    with SessionLocal() as db:
+        outcome = run_organize(db, uuid.UUID(job_id))
+    if outcome == "continue":
+        organize_memory.apply_async(args=[job_id], queue="ai")
+    return outcome
 
 
 @celery_app.task(name="worker_ai.tasks.execute_action_task")
@@ -219,11 +297,20 @@ def execute_action_task(action_id: str) -> None:
                 action.result = {"error":"Talk user/room binding was revoked before execution"}
                 db.commit()
                 return
+        parent = db.get(AITask, action.task_id) if action.task_id else None
+        if getattr(action, "source", None) == "incident" or getattr(parent, "source", None) == "incident":
+            from app.core.incident_tasks import incident_task_authorized
+            if parent is None or not incident_task_authorized(db, parent):
+                action.status = "expired"
+                action.result = {"error": "Incident investigation authorization or source state changed before execution"}
+                db.commit()
+                return
         action.status = "executing"
         action.executed_at = _now()  # claim timestamp; overwritten on completion
         db.commit()  # atomic claim MUST precede set_agent_state, which commits too
 
-        set_agent_state(db, agent, "working", f"Executing: {action.action}", None, str(action.task_id) if action.task_id else None)
+        set_agent_state(db, agent, "working", f"Executing: {action.action}", None, str(action.task_id) if action.task_id else None,
+                        event="action_started", tool=action.tool)
 
         try:
             executor = EXECUTORS[action.tool]
@@ -249,4 +336,33 @@ def execute_action_task(action_id: str) -> None:
             None if action.status == "executed" else f"Action {action.request_code} failed",
             None,
             str(action.task_id) if action.task_id else None,
+            event="action_finished" if action.status == "executed" else "error", tool=action.tool,
         )
+
+
+@celery_app.task(name="worker_ai.tasks.nova_routines")
+def nova_routines() -> dict:
+    """Every minute: start due nova routines (see worker_ai/ai/routines.py)."""
+    from worker_ai.ai.routines import tick
+
+    with SessionLocal() as db:
+        outcomes, enqueue = tick(db)
+    for task_id in enqueue:
+        run_agent_task.apply_async(args=[task_id], queue="ai")
+    return outcomes
+
+
+@celery_app.task(name="worker_ai.tasks.run_nova_routine")
+def run_nova_routine(routine_id: str, user_id: str) -> str:
+    """The owner's "Run now": one manual run, outside quiet hours and the daily cap."""
+    from worker_ai.ai.routines import start_run
+    from app.models.nova import NovaRoutine
+
+    with SessionLocal() as db:
+        routine = db.get(NovaRoutine, routine_id)
+        if routine is None or str(routine.user_id) != user_id:
+            return "routine not found"
+        outcome, task_id = start_run(db, routine, _now(), manual=True)
+    if task_id:
+        run_agent_task.apply_async(args=[task_id], queue="ai")
+    return outcome

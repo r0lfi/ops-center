@@ -7,6 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember_me: bool = False
+
+
+class ReauthRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=1000)
 
 
 class TokenResponse(BaseModel):
@@ -14,6 +19,21 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     role: str
     username: str
+    remember: bool = False
+
+
+class SessionRead(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    username: str
+    remember: bool
+    created_at: datetime
+    last_used_at: datetime
+    idle_expires_at: datetime
+    absolute_expires_at: datetime
+    user_agent: str | None
+    ip: str | None
+    current: bool
 
 
 class UserRead(BaseModel):

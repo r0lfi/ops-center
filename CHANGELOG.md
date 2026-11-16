@@ -11,6 +11,72 @@ uses it as the release notes and refuses a tag without one. See
 
 ## [Unreleased]
 
+The largest update since 0.1.0. Existing installations: read
+[Upgrading to the November 2026 update](README.md#upgrading-to-the-november-2026-update)
+first. **Migrations `0043`–`0066` run on start, and every browser signs in once.**
+
+### Added
+
+- **Ops Floor** rebuilt: one status model for all agents, fixed seats, a 2D plan
+  and a 3D office built from CSS (the Three.js scene and its packages are gone),
+  approvals and chat on the floor, what each agent is doing right now, and a date
+  on the activity log.
+- **AI overview** shows who is working and answers approvals in place; **Ask Ops
+  AI** is a floating, page-aware assistant with large and pinned modes.
+- **Agent investigations** on a shared task board: work items, findings,
+  hypotheses, parallel delegation, time/context/tool budgets, resumable runs.
+- **Read-only diagnostics** (`run_diagnostic`, `file_grep`) from a fixed,
+  validated catalog that runs without approval.
+- **Developer Agent**: tool proposals become reviewable patches with checks,
+  change review, re-authentication for production approval and a release record.
+  `scripts/admin/apply-tool-proposal.sh` applies an approved patch on a branch.
+- **Incident management**: one incident per problem, status workflow,
+  single-notice Talk delivery with retries, optional automatic AI investigations.
+- **AI Traffic Monitor**: worker instrumentation plus an optional passive
+  collector (`ai-traffic-collector` image, Compose profile `ai-traffic`), with
+  live traffic, live map, blocked/failed, agent traces, network flow and coverage.
+- **Weekly AI budget** in USD shared by all agents, priced per reviewed model,
+  with reservation before and settlement after each call; editable in Settings.
+- **Providers**: Mistral AI, OpenAI-compatible local models and Ollama context
+  size; provider keys encrypted in the database; retries on provider overload.
+- **Personal agent** (example name *Nova*): memory suggestions, organised notes
+  with history, imports from ChatGPT and other assistants, a nightly journal,
+  routines and optional read-only CalDAV/Home Assistant sources.
+- **External agents** (`runtime: "external"`, for example opencode) report their
+  state and appear on the Ops Floor.
+- **Native monitoring** of hosts and containers from Prometheus with detail pages.
+- **Interface**: new menu, Ctrl+K command palette, filters in the URL, settings
+  in tabs, one date/number/severity format, every page usable on phones.
+- **Sessions**: server-side sessions, in-memory access tokens, rotating HttpOnly
+  refresh cookie, *Remember me*, revocation and re-authentication.
+- **opstui**: a Rust/Ratatui terminal interface for agents, tasks, approvals,
+  chat and the Ops Floor, including local Claude Code sessions.
+- Patching agent checks pending updates and reboot need live on the host.
+- MCP: the AI menu shows MCP access per agent and owner; agents use MCP only on
+  the local network; `ops_ask_ops_ai` accepts page context (114 tools).
+- Import of Claude Code memory files as shared notes
+  (`scripts/admin/import-claude-memory.py`).
+
+### Changed
+
+- Access tokens expire after 15 minutes (was 60) and are renewed from the cookie.
+- Overview, monitoring and security pages count the same way.
+- The scheduler's lock interval is shorter, so a failover no longer blocks
+  scheduled tasks for up to 25 minutes.
+- Patch history and the exec audit trail are kept; the health endpoint is bounded.
+- Worker and API images install with pinned dependency constraints.
+- README screenshots are regenerated from the current interface, with new images
+  for the Ops Floor, AI overview, AI Traffic Monitor, incidents, Developer Agent,
+  personal agent, command palette and phone layout. The animated GIF of the old
+  3D scene is removed.
+
+### Upgrade notes
+
+- Everyone signs in again after migration `0063`. Over plain HTTP on anything
+  other than localhost, set `SESSION_COOKIE_SECURE=false`.
+- Save AI provider keys once on the AI Agents page to store them encrypted.
+- Set the weekly AI budget; unpriced models are refused.
+
 ## [0.1.0] - 2026-10-02
 
 First versioned release. Earlier changes were published without version

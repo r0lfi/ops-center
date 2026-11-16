@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { api, type MetricSeries } from "@/lib/api";
+import { formatClock } from "@/lib/format";
 
 // Palette validated for dark-mode categorical use (see the dataviz skill) -
 // slot1 blue / slot3 aqua / slot2 orange, all pairs pass CVD + contrast.
@@ -48,7 +49,7 @@ export function SystemLoadChart() {
         const timestamps = [...cpu.keys()].sort((a, b) => a - b);
         setData(
           timestamps.map((ts) => ({
-            time: new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            time: formatClock(ts * 1000),
             cpu: Math.round(cpu.get(ts) ?? 0),
             memory: Math.round(memory.get(ts) ?? 0),
             disk: Math.round(disk.get(ts) ?? 0),

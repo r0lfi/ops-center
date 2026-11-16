@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 test.use({ serviceWorkers: "block" });
 test("authentication log distinguishes outcomes, filters pages and shows DNS failures", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("ops_center_token", "pwa-test-only"));
+  await page.addInitScript(() => (document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
   const errors:string[]=[]; page.on("pageerror", e=>errors.push(e.message));
   await page.route("**/api/traffic/history?*", route=>route.fulfill({json:{
     now:Date.now()/1000,stats:{total:0,clients:0,countries:0,errors:0,handshakes:0},
@@ -38,7 +38,7 @@ test("authentication log distinguishes outcomes, filters pages and shows DNS fai
 
 for (const path of ["/traffic-map?service=media","/traffic-map/wallboard?service=media"]) {
   test("top authentication notice remains live across filters and pause: "+path, async ({page})=>{
-    await page.addInitScript(()=>localStorage.setItem("ops_center_token","pwa-test-only"));
+    await page.addInitScript(()=>(document.cookie = "ops_refresh=" + "pwa-test-only" + "; path=/"));
     await page.route("**/api/traffic/history?*", route=>route.fulfill({json:{
       now:Date.now()/1000,stats:{total:0,clients:0,countries:0,errors:0,handshakes:0,http:0},
       events:[],countries:[],timeline:[],sources:[],destinations:{}

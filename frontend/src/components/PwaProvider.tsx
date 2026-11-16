@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { Download, Share } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 
+import { HEALTH_COMPONENT_LABELS, type HealthResponse } from "@/lib/api";
 import { AppleInstallHelp } from "./AppleInstallHelp";
 
 interface InstallPrompt extends Event {
@@ -10,6 +11,27 @@ interface InstallPrompt extends Event {
 }
 interface InstallAction { run: () => void; manual: boolean }
 const InstallContext = createContext<InstallAction | null>(null);
+
+// One failed check proves little: a phone waking up has no network for a few
+// seconds, and a failover or redeploy lasts about as long. Block the app only
+// when a second check, a few seconds later, agrees.
+const FAILURES_BEFORE_BLOCKING = 2;
+const RETRY_DELAY_MS = 4000;
+const HEALTH_POLL_MS = 30000;
+const HEALTH_TIMEOUT_MS = 10000;
+const RECOVERED_NOTICE_MS = 10000;
+
+type Outage = { kind: "network" } | { kind: "backend"; status: number; failing: string[] };
+
+function outageText(outage: Outage): { title: string; detail: string } {
+  if (outage.kind === "network") {
+    return { title: "Ops Center is currently offline", detail: "This device can't reach the server. Check your network or VPN connection." };
+  }
+  if (outage.failing.includes("database")) {
+    return { title: "Ops Center can't reach its database", detail: "The server is running, but these parts are failing:" };
+  }
+  return { title: "Ops Center's backend is not responding", detail: `The web server answered with HTTP ${outage.status}, but the API behind it is unavailable.` };
+}
 
 export function InstallOpsCenter({ compact = true }: { compact?: boolean }) {
   const install = useContext(InstallContext);
@@ -36,8 +58,9 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   const registration = useRef<ServiceWorkerRegistration>();
   const reloadRequested = useRef(false);
   const content = useRef<HTMLDivElement>(null);
-  const [blocked, setBlocked] = useState(!navigator.onLine);
-  const [reachable, setReachable] = useState(false);
+  const [outage, setOutage] = useState<Outage | null>(null);
+  const blocked = outage !== null;
+  const [recovered, setRecovered] = useState(false);
   const [checking, setChecking] = useState(false);
   const checkBackend = useRef<() => void>(() => {});
 
@@ -102,41 +125,77 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let disposed = false;
     let controller: AbortController | undefined;
-    const offline = () => { setBlocked(true); setReachable(false); };
-    const check = async () => {
-      if (controller || disposed) return;
-      if (!navigator.onLine) { offline(); return; }
+    let failures = 0;
+    let retry: number | undefined;
+    let wasBlocked = false;
+    let hideNotice: number | undefined;
+    const healthy = () => {
+      failures = 0;
+      setOutage(null);
+      if (wasBlocked) {
+        wasBlocked = false;
+        setRecovered(true);
+        clearTimeout(hideNotice);
+        hideNotice = window.setTimeout(() => setRecovered(false), RECOVERED_NOTICE_MS);
+      }
+    };
+    const check = async (deliberate = false) => {
+      // While a retry is pending, other requests failing at the same time are
+      // the same evidence, not a second opinion. Only the retry may decide.
+      if (controller || disposed || (retry !== undefined && !deliberate)) return;
+      clearTimeout(retry);
+      retry = undefined;
+      const failed = (found: Outage) => {
+        // Browsers suspend network access for a hidden tab or a backgrounded
+        // PWA, so a failure seen while hidden says nothing about the backend.
+        if (disposed || document.visibilityState !== "visible") return;
+        failures += 1;
+        if (failures >= FAILURES_BEFORE_BLOCKING) {
+          wasBlocked = true;
+          setRecovered(false);
+          setOutage(found);
+        }
+        retry = window.setTimeout(() => { void check(true); }, RETRY_DELAY_MS);
+      };
       controller = new AbortController();
-      const timeout = window.setTimeout(() => controller?.abort(), 15000);
+      const timeout = window.setTimeout(() => controller?.abort(), HEALTH_TIMEOUT_MS);
       setChecking(true);
       try {
         const response = await fetch("/api/health", { cache: "no-store", credentials: "same-origin", signal: controller.signal });
-        const health = await response.json();
-        if (!response.ok || !["ok", "degraded"].includes(health.status) || health.components?.database !== "ok") throw new Error("Backend unavailable");
-        if (!disposed) setReachable(true);
+        const health: Partial<HealthResponse> | null = await response.json().catch(() => null);
+        const components = health?.components ?? {};
+        if (response.ok && (health?.status === "ok" || health?.status === "degraded") && components.database === "ok") {
+          if (!disposed) healthy();
+        } else {
+          failed({ kind: "backend", status: response.status, failing: Object.keys(components).filter(name => components[name] !== "ok") });
+        }
       } catch {
-        if (!disposed) offline();
+        failed({ kind: "network" });
       } finally {
         clearTimeout(timeout);
         controller = undefined;
         if (!disposed) setChecking(false);
       }
     };
-    checkBackend.current = () => { void check(); };
+    checkBackend.current = () => { void check(true); };
     const visible = () => { if (document.visibilityState === "visible") void check(); };
-    const interval = window.setInterval(visible, 30000);
-    window.addEventListener("offline", offline);
+    const interval = window.setInterval(visible, HEALTH_POLL_MS);
+    // The offline event and a failed request are hints, not proof: check first.
+    const suspect = () => { void check(); };
+    window.addEventListener("offline", suspect);
     window.addEventListener("online", visible);
-    window.addEventListener("ops-backend-unavailable", offline);
+    window.addEventListener("ops-backend-unavailable", suspect);
     document.addEventListener("visibilitychange", visible);
     void check();
     return () => {
       disposed = true;
       clearInterval(interval);
+      clearTimeout(retry);
+      clearTimeout(hideNotice);
       controller?.abort();
-      window.removeEventListener("offline", offline);
+      window.removeEventListener("offline", suspect);
       window.removeEventListener("online", visible);
-      window.removeEventListener("ops-backend-unavailable", offline);
+      window.removeEventListener("ops-backend-unavailable", suspect);
       document.removeEventListener("visibilitychange", visible);
     };
   }, []);
@@ -164,20 +223,29 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   return <InstallContext.Provider value={install}>
     <div ref={content} style={blocked ? { visibility: "hidden" } : undefined} aria-hidden={blocked || undefined}>{children}</div>
     <AppleInstallHelp open={appleHelpOpen && !standalone && !blocked} onOpenChange={setAppleHelpOpen} />
-    {blocked && <Dialog.Root open><Dialog.Portal>
+    {outage && <Dialog.Root open><Dialog.Portal>
       <Dialog.Content className="pwa-offline" role="alertdialog" onEscapeKeyDown={event => event.preventDefault()} onInteractOutside={event => event.preventDefault()}>
       <div className="max-w-lg space-y-4 text-center">
         <img src="/icons/icon-192.png" alt="" width="72" height="72" className="mx-auto" />
-        <Dialog.Title asChild><h1 className="text-2xl font-semibold">Ops Center is currently offline</h1></Dialog.Title>
-        <Dialog.Description asChild><p className="text-muted-foreground">Live status and actions are unavailable. Previously loaded data is hidden until you reload with a working backend connection.</p></Dialog.Description>
-        {reachable && <p>Backend connection restored. Reload to fetch current data.</p>}
+        <Dialog.Title asChild><h1 className="text-2xl font-semibold">{outageText(outage).title}</h1></Dialog.Title>
+        <Dialog.Description asChild><p className="text-muted-foreground">{outageText(outage).detail}</p></Dialog.Description>
+        {outage.kind === "backend" && outage.failing.length > 0 && <ul className="mx-auto w-fit space-y-1 text-left text-sm">
+          {outage.failing.map(name => <li key={name} className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-status-critical" />{HEALTH_COMPONENT_LABELS[name] ?? name}
+          </li>)}
+        </ul>}
+        <p className="text-sm text-muted-foreground">Live data is hidden so old values aren't mistaken for current ones. This page keeps retrying and comes back by itself.</p>
         <button type="button" className="rounded-lg border border-primary px-4 py-2 focus-visible:ring-2 focus-visible:ring-ring"
-          disabled={checking} onClick={() => reachable ? window.location.reload() : checkBackend.current()}>
-          {checking ? "Checking connection…" : reachable ? "Reload Ops Center" : "Retry connection"}
+          disabled={checking} onClick={() => checkBackend.current()}>
+          {checking ? "Checking connection…" : "Retry now"}
         </button>
       </div>
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>}
+    {recovered && !blocked && !updateReady && <div className="pwa-update" role="status">
+      <span>Connection restored. Reload if this page looks out of date.</span>
+      <button type="button" onClick={() => window.location.reload()} className="shrink-0 rounded-md border border-primary px-3 py-2 focus-visible:ring-2 focus-visible:ring-ring">Reload</button>
+    </div>}
     {updateReady && !blocked && <div className="pwa-update" role="status">
       <span>{updateError ? "Update could not activate. Try Reload again." : "New Ops Center version available."} Save your work before reloading.</span>
       <button type="button" onClick={reload} className="shrink-0 rounded-md border border-primary px-3 py-2 focus-visible:ring-2 focus-visible:ring-ring">Reload</button>

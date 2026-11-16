@@ -1,5 +1,9 @@
+import { McpAccessBanner } from "@/components/ai/McpAgentAccess";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { AgentBadge } from "@/components/ai/AgentIdentity";
 import { useEffect, useState } from "react";
-import { MessageSquare, Plus, Settings2, Trash2 } from "lucide-react";
+import { MessageSquare, Plus, Power, PowerOff, Settings2, Trash2, UserRound } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 
 import { ProviderKeyDialog } from "@/components/ai/ProviderKeyDialog";
@@ -37,6 +41,11 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
+/** Anything but a self-hosted endpoint sends prompts to a third party. */
+export function isCloudProvider(provider: AIProvider | undefined): boolean {
+  return provider?.kind === "anthropic" || provider?.kind === "openai" || provider?.kind === "mistral";
+}
+
 function AgentConfigDialog({
   agent,
   providers,
@@ -54,6 +63,17 @@ function AgentConfigDialog({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [open, setOpen] = useState(false);
+
+  function changeOpen(nextOpen: boolean) {
+    if (nextOpen && !open) {
+      setProviderId(agent.provider_id ?? "");
+      setModel(agent.model ?? "");
+      setSystemPrompt(agent.system_prompt);
+      setMaxToolCalls(agent.max_tool_calls);
+      setEnabled(agent.enabled);
+    }
+    setOpen(nextOpen);
+  }
 
   async function save() {
     setSaving(true);
@@ -85,7 +105,7 @@ function AgentConfigDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <Settings2 className="h-3.5 w-3.5" />
@@ -98,8 +118,9 @@ function AgentConfigDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>Provider</Label>
+            <Label htmlFor={`agent-provider-${agent.id}`}>Provider</Label>
             <select
+              id={`agent-provider-${agent.id}`}
               className="w-full rounded-md border border-input bg-secondary px-3 py-2 text-sm"
               value={providerId}
               onChange={(e) => setProviderId(e.target.value)}
@@ -113,27 +134,31 @@ function AgentConfigDialog({
             </select>
           </div>
           <div className="space-y-1">
-            <Label>Model override (blank = provider default)</Label>
-            <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. gpt-4o, claude-sonnet-5" />
+            <Label htmlFor={`agent-model-${agent.id}`}>Model override (blank = provider default)</Label>
+            <Input id={`agent-model-${agent.id}`} value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. gpt-4o, claude-sonnet-5" />
           </div>
           <div className="space-y-1">
-            <Label>System prompt</Label>
+            <Label htmlFor={`agent-prompt-${agent.id}`}>System prompt</Label>
             <textarea
+              id={`agent-prompt-${agent.id}`}
               className="min-h-32 w-full resize-y rounded-md border border-input bg-secondary px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
             />
           </div>
-          <div className="space-y-1">
-            <Label>Max tool calls per run</Label>
+          <details className="space-y-2">
+            <summary className="cursor-pointer text-sm font-medium">Advanced run safety</summary>
+            <p className="text-xs text-muted-foreground">The shared weekly budget controls spending. This safety limit stops repeated tool calls in one run.</p>
+            <Label htmlFor={`tool-rounds-${agent.id}`}>Maximum tool calls per run</Label>
             <Input
               type="number"
               min={1}
-              max={50}
+              max={256}
+              id={`tool-rounds-${agent.id}`}
               value={maxToolCalls}
               onChange={(e) => setMaxToolCalls(Number(e.target.value))}
             />
-          </div>
+          </details>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Enabled
@@ -142,7 +167,14 @@ function AgentConfigDialog({
             <p>Allowed tools: {agent.allowed_tools.join(", ") || "(none)"}</p>
             <p>Allowed hosts: {agent.allowed_hosts.join(", ") || "all"}</p>
             <p>Allowed environments: {agent.allowed_environments.join(", ") || "all"}</p>
+            {agent.allowed_dispatch_targets && <p>Can delegate to: {agent.allowed_dispatch_targets.join(", ") || "(none)"}</p>}
+            {agent.personal && <p>Personal agent: no other agent can delegate to it and its conversations are visible only to their owner.</p>}
           </div>
+          {agent.personal && isCloudProvider(providers.find((p) => p.id === providerId)) && (
+            <p role="alert" className="rounded-md border border-status-warning/60 p-2 text-xs text-status-warning">
+              {agent.name} will send your conversations, notes and history excerpts to this cloud provider.
+            </p>
+          )}
         </div>
         <DialogFooter className="justify-between">
           {agent.slug !== "coordinator" ? (
@@ -304,6 +336,8 @@ export default function AIAgentsList() {
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [findings, setFindings] = useState<AIFinding[]>([]);
+  const [toggling, setToggling] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   function refresh() {
     api.ai.providers.list().then(setProviders).catch(() => {});
@@ -322,6 +356,37 @@ export default function AIAgentsList() {
     return acc;
   }, {});
 
+  const enabledCount = agents.filter((a) => a.enabled).length;
+
+  async function setEnabled(agent: AIAgent, enabled: boolean) {
+    setToggling((prev) => new Set(prev).add(agent.id));
+    try {
+      const updated = await api.ai.agents.update(agent.id, { enabled });
+      setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch {
+      /* apiSend already shows the failure as a toast */
+    } finally {
+      setToggling((prev) => {
+        const next = new Set(prev);
+        next.delete(agent.id);
+        return next;
+      });
+    }
+  }
+
+  async function setAllEnabled(enabled: boolean) {
+    const targets = agents.filter((a) => a.enabled !== enabled);
+    if (!targets.length) return;
+    if (!enabled && !confirm(`Disable all ${targets.length} enabled agents? They stop taking new tasks (chat, Talk, incident investigations) until enabled again.`)) return;
+    setBulkBusy(true);
+    try {
+      await Promise.allSettled(targets.map((a) => setEnabled(a, enabled)));
+    } finally {
+      setBulkBusy(false);
+      refresh();
+    }
+  }
+
   const providerById = providers.reduce<Record<string, AIProvider>>((acc, p) => {
     acc[p.id] = p;
     return acc;
@@ -329,11 +394,39 @@ export default function AIAgentsList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Agents</h1>
-        {isAdmin && <AgentCreateDialog providers={providers} onCreated={refresh} />}
-      </div>
+      <PageHeader title="Agents" actions={isAdmin && <AgentCreateDialog providers={providers} onCreated={refresh} />} />
+      <McpAccessBanner />
 
+      {isAdmin && agents.length > 0 && (
+        <Card className={cn(enabledCount === 0 && "border-status-critical/60")}>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div>
+              <p className="text-sm font-semibold">
+                {enabledCount === 0 ? "All agents are disabled" : `${enabledCount} of ${agents.length} agents enabled`}
+              </p>
+              <p className="text-xs text-muted-foreground">Disabled agents take no new tasks from chat, Talk or incident investigations.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {enabledCount > 0 && (
+                <Button variant="destructive" disabled={bulkBusy} onClick={() => setAllEnabled(false)}>
+                  <PowerOff className="h-4 w-4" />
+                  Disable all agents
+                </Button>
+              )}
+              {enabledCount < agents.length && (
+                <Button variant="outline" disabled={bulkBusy} onClick={() => setAllEnabled(true)}>
+                  <Power className="h-4 w-4" />
+                  Enable all agents
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <p className="text-sm text-muted-foreground">
+        Spending is limited by the <Link className="text-primary hover:underline" to="/settings?tab=ai">weekly AI budget</Link>.
+      </p>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">AI Providers</CardTitle>
@@ -347,7 +440,7 @@ export default function AIAgentsList() {
               </div>
               <p className="text-xs text-muted-foreground">
                 {p.default_model || "no default model set"}
-                {p.kind !== "ollama" && <> - key {p.has_key ? "configured" : "not set"}</>}
+                {p.kind !== "ollama" && <> - key {p.has_key ? "configured" : p.kind === "openai_compatible" ? "optional" : "not set"}</>}
               </p>
               {isAdmin && <ProviderKeyDialog provider={p} onSaved={refresh} />}
             </div>
@@ -357,10 +450,14 @@ export default function AIAgentsList() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {agents.map((agent) => (
-          <Card key={agent.id}>
+          <Card key={agent.id} className={cn(!agent.enabled && "border-dashed opacity-70")}>
             <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-base">{agent.name}</CardTitle>
-              <Badge variant={STATUS_VARIANT[agent.status]}>{agent.status}</Badge>
+              <CardTitle className="flex min-w-0 items-center gap-2 text-base"><AgentBadge slug={agent.slug} size={28} /><span>{agent.name}</span>{agent.runtime === "external" && <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground" title="Runs outside Ops Center and reports its own state">external</span>}</CardTitle>
+              {agent.enabled ? (
+                <Badge variant={STATUS_VARIANT[agent.status]}>{agent.status}</Badge>
+              ) : (
+                <Badge variant="critical">disabled</Badge>
+              )}
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <p className="text-muted-foreground">{agent.description}</p>
@@ -383,14 +480,34 @@ export default function AIAgentsList() {
                 {findingCountByAgent[agent.id] ?? 0}
               </p>
               {agent.error_message && <p className="text-status-critical">{agent.error_message}</p>}
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex flex-wrap items-center gap-2 pt-2">
                 <Button size="sm" variant="outline" asChild>
                   <Link to={`/ai-agents/chat?agent=${agent.slug}`}>
                     <MessageSquare className="h-3.5 w-3.5" />
                     Ask Agent
                   </Link>
                 </Button>
+                {agent.slug === "nova" && (
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/ai-agents/nova">
+                      <UserRound className="h-3.5 w-3.5" />
+                      Open Nova
+                    </Link>
+                  </Button>
+                )}
                 {isAdmin && <AgentConfigDialog agent={agent} providers={providers} onSaved={refresh} />}
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant={agent.enabled ? "outline" : "default"}
+                    className={cn("ml-auto", agent.enabled && "border-status-critical/50 text-status-critical hover:text-status-critical")}
+                    disabled={toggling.has(agent.id) || bulkBusy}
+                    onClick={() => setEnabled(agent, !agent.enabled)}
+                  >
+                    {agent.enabled ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+                    {agent.enabled ? "Disable" : "Enable"}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

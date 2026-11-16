@@ -53,6 +53,17 @@ jobs:
         with:
           name: browser-test-results
           path: frontend/test-results
+  tui:
+    # opstui (Rust/Ratatui terminal interface): formatting, lints and tests on
+    # the same AlmaLinux release and AppStream Rust as tui/Containerfile.build.
+    runs-on: ubuntu-latest
+    container: almalinux:10.2
+    steps:
+      - uses: actions/checkout@v4
+      - run: dnf -y install rust cargo clippy rustfmt gcc
+      - run: cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked
+        working-directory: tui
+
   python-tests:
     runs-on: ubuntu-latest
     strategy:
@@ -153,6 +164,7 @@ jobs:
           - {image: ai-worker, context: '.', file: worker_ai/Dockerfile}
           - {image: security-worker, context: '.', file: security/Dockerfile}
           - {image: postgres-ha, context: ha/postgres, file: ha/postgres/Dockerfile}
+          - {image: ai-traffic-collector, context: ai_traffic_collector, file: ai_traffic_collector/Dockerfile}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
