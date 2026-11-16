@@ -1040,7 +1040,7 @@ impl App {
             });
             self.tasks.extend(s.turns.iter().cloned());
         }
-        self.tasks.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        self.tasks.sort_by_key(|t| std::cmp::Reverse(t.created_at));
         if let Some(s) = self
             .chat
             .agent

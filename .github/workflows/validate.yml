@@ -34,7 +34,8 @@ jobs:
       - name: Validate HA installer syntax
         run: ansible-playbook --syntax-check -i deploy/inventory.example.ini deploy/ha.yml
   frontend:
-    runs-on: ubuntu-latest
+    # Playwright supports Ubuntu LTS releases only up to 24.04 so far.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
