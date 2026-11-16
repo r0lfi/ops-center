@@ -39,9 +39,11 @@ test("viewer has no handling controls and failed fetch hides stale detail",async
   await page.goto("/incidents/42");
   await expect(page.getByRole("heading",{name:"Disk capacity"})).toBeVisible();
   await expect(page.getByRole("button",{name:"Mark completed"})).toHaveCount(0);
+  // A real outage: the health check fails too, so the overlay is not a false alarm.
   await page.route("**/api/incidents/42",r=>r.fulfill({status:503,json:{detail:"Synthetic outage"}}));
+  await page.route("**/api/health",r=>r.fulfill({status:503,json:{detail:"Synthetic outage"}}));
   await page.reload();
-  await expect(page.getByRole("alertdialog")).toContainText("Ops Center is currently offline");
+  await expect(page.getByRole("alertdialog")).toContainText("Ops Center's backend is not responding");
   await expect(page.getByRole("heading",{name:"Disk capacity"})).toHaveCount(0);
 });
 test("configure notification categories and explicit trusted IPs",async({page})=>{

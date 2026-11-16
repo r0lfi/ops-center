@@ -48,7 +48,7 @@ test("host metrics → scoped host logs → containers → scoped container metr
  await page.locator(`a[href*="/monitoring/hosts/${hostA}"]`).focus();
  await page.keyboard.press("Enter");
  await page.getByRole("tab",{name:"Metrics",exact:true}).click();
- await expect(page.getByRole("heading",{name:"Load average · 1 minute",exact:true})).toBeVisible();
+ await expect(page.getByRole("heading",{name:"System Load",exact:true})).toBeVisible();
  await page.getByRole("tab",{name:"Logs",exact:true}).click();
  await expect(page.getByText("<img src=x onerror=alert(1)> is plain text",{exact:true})).toBeVisible();
  expect(await page.locator('img[src="x"]').count()).toBe(0);
@@ -95,7 +95,7 @@ test("live logs stop polling when the tab is inactive",async({page})=>{
  await page.goto(`/monitoring/hosts/${hostA}?minutes=15&auto=off&tab=logs&log_live=1`);
  await expect(page.getByText("<img src=x onerror=alert(1)> is plain text",{exact:true})).toBeVisible();
  await page.clock.fastForward(10001);await expect.poll(()=>calls).toBeGreaterThan(1);
- await page.getByRole("tab",{name:"Overview",exact:true}).click();const stopped=calls;
+ await page.getByRole("tab",{name:"Metrics",exact:true}).click();const stopped=calls;
  await page.clock.fastForward(30001);expect(calls).toBe(stopped);
 });
 

@@ -55,6 +55,8 @@ REVIEWED_ARTWORK = {
     "frontend/public/icons/icon-192.png": "06b465a14660c99a309dbbc71c627555045f65f2ed60d8462f8f33ddfa8da85d",
     "frontend/public/icons/icon-512.png": "6d5e56d76c5bb938e71372b60071c8d4568d7ea4a600ce343afcd6ede2946768",
     "frontend/public/icons/maskable-512.png": "6d5e56d76c5bb938e71372b60071c8d4568d7ea4a600ce343afcd6ede2946768",
+    "docs/images/features/opstui-dashboard.png": "b04daa35176e8beb553d297971d200d81fedd921ac96f1778fe8dbb660a241cd",
+    "docs/images/features/opstui-floor.png": "0b4581a56b28962651cfce68a9788e83ea16f3ce66c205ee9d23c969bec79749",
     "docs/images/ops-floor.gif": "3937b7155d9ee14b0b38eacbc2cea6ada7e6f11762bf9b59b37e698ba2efae2b",
     # Silkscreen 5.1.0 from @fontsource/silkscreen (OFL-1.1, see fonts/OFL.txt).
     "frontend/src/components/ops-floor/fonts/silkscreen-latin-400-normal.woff2": "11111c0d26af329a7cd21413d84956a8a0d93f543b14fba47a7d4181a66f5556",

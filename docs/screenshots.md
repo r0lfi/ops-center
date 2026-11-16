@@ -35,6 +35,8 @@ collection and agent collaboration start disabled.
 | Personal agent | [personal-agent.png](images/features/personal-agent.png) | The example personal agent "Nova" and its requests |
 | Command palette | [command-palette.png](images/features/command-palette.png) | Ctrl+K search across pages |
 | Phone layout | [mobile.png](images/features/mobile.png) | Ops Floor on a phone-sized screen |
+| opstui dashboard | [opstui-dashboard.png](images/features/opstui-dashboard.png) | Terminal dashboard with example agents and an approval |
+| opstui Ops Floor | [opstui-floor.png](images/features/opstui-floor.png) | The 2D plan in a terminal |
 | PWA installation | [pwa-install.png](images/features/pwa-install.png) | In-app iPhone/iPad installation help |
 | Offline protection | [pwa-offline.png](images/features/pwa-offline.png) | Overlay hiding stale infrastructure data |
 
@@ -93,6 +95,14 @@ selected views, pass their filename stems:
 
 ```bash
 node scripts/capture-readme.mjs traffic-map traffic-settings
+```
+
+The opstui images are rendered by an ignored Rust test (synthetic data, no
+server) and turned into PNGs by Playwright:
+
+```bash
+cd tui && OPSTUI_SCREENSHOT_DIR=/tmp/opstui cargo test --test screenshot -- --ignored
+cd ../frontend && node scripts/capture-tui.mjs /tmp/opstui
 ```
 
 Close the process if capture fails before completing. Do not substitute a real

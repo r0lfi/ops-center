@@ -99,7 +99,7 @@ test.describe("model", () => {
   });
 
   test("counts, links and the log come from the data", () => {
-    const configs = [agent("coordinator"), agent("automation"), agent("nova", { personal: true }), agent("ext-coder")];
+    const configs = [agent("coordinator"), agent("automation"), agent("nova", { personal: true }), agent("ext-coder", { runtime: "external" })];
     const tasks = [task({ agents_used: ["automation"] }), task({ id: "t2", status: "queued", agent_id: "id-automation" })];
     const { agents } = buildFloor(configs, {}, [action()], tasks);
     const counts = floorCounts(agents, tasks);

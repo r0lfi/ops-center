@@ -360,7 +360,7 @@ export default function HostMetricsDetail() {
         Some metrics could not be collected: {Object.keys(data?.errors ?? {}).join(", ")}. Other sources remain available.</p>}
       <Tabs value={tab} onValueChange={key => update({ tab: key })}>
         <TabsList aria-label="Host details" className="gap-1 overflow-x-auto">
-          {TABS.map(key => <TabsTrigger key={key} value={key} className="capitalize">{key}</TabsTrigger>)}
+          {TABS.map(key => <TabsTrigger key={key} value={key}>{key[0].toUpperCase() + key.slice(1)}</TabsTrigger>)}
         </TabsList>
         <TabsContent value="overview" className="flex flex-col gap-3">
           <HostOverview host={host} containers={containers} params={params} minutes={minutes} errors={data?.errors ?? {}} />

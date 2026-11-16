@@ -12,6 +12,7 @@ async function mock(page: import("@playwright/test").Page) {
   await page.route("**/api/ai/agents", r => r.fulfill({ json: [{ id: "22222222-2222-4222-8222-222222222222", name: "Operations agent", enabled: true, allowed_tools: ["get_alerts"] }] }));
   await page.route("**/api/mcp/settings", r => r.fulfill({ json: { enabled: true, revision: 1, public_url: "https://ops.example.com/mcp", tools, scopes: ["ops:connect", ...tools.map(t => t.scope)] } }));
   for (const path of ["grants", "requests", "audit"]) await page.route("**/api/mcp/" + path, r => r.fulfill({ json: [] }));
+  await page.route("**/api/mcp/agent-access", r => r.fulfill({ json: { service_enabled: true, rows: [] } }));
 }
 test("register a client with explicit tools and users", async ({ page }) => {
   await mock(page);

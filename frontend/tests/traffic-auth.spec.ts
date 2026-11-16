@@ -45,6 +45,8 @@ for (const path of ["/traffic-map?service=media","/traffic-map/wallboard?service
     }}));
     await page.route("**/api/traffic/security?*",route=>route.fulfill({json:{alerts:[],logins:[],authentication:[]}}));
     let later=false,failed=false,backendFailed=false;
+    // The overlay confirms an outage with the health check before it shows.
+    await page.route("**/api/health",route=>backendFailed?route.fulfill({status:503,json:{detail:"Test backend unavailable"}}):route.fallback());
     await page.route("**/api/traffic/security/banner",route=>backendFailed?route.fulfill({status:503,json:{detail:"Test source unavailable"}}):route.fulfill({json:{
       now:Date.now()/1000,last_success:Date.now()/1000,error:failed?"Test collector unavailable":null,
       sources:["npm","caddy","wireguard","ssh","hagen"].map(name=>({name,last_success:Date.now()/1000,error:null})),
@@ -77,6 +79,6 @@ for (const path of ["/traffic-map?service=media","/traffic-map/wallboard?service
     await expect(banner.getByText("Successful admin login outside trusted origins",{exact:true})).toBeVisible();
     await page.screenshot({path:"test-results/auth-banner-expanded-"+test.info().project.name+".png"});
     backendFailed=true;
-    await expect(page.getByRole("alertdialog",{name:"Ops Center is currently offline"})).toBeVisible({timeout:10000});
+    await expect(page.getByRole("alertdialog",{name:"Ops Center's backend is not responding"})).toBeVisible({timeout:10000});
   });
 }

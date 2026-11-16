@@ -10,8 +10,8 @@ test("menu has the agreed groups and no item counts", async ({ page }) => {
   await signIn(page, { "/api/alerts": { available: true, alerts: [] } });
   await page.goto("/");
   const groups = nav(page).getByRole("region");
-  await expect(groups).toHaveCount(5);
-  for (const name of ["Alerts & Incidents", "Infrastructure", "Security", "Automation", "AI"]) {
+  await expect(groups).toHaveCount(6);
+  for (const name of ["Alerts & Incidents", "Infrastructure", "Security", "Automation", "AI Traffic Monitor", "AI"]) {
     await expect(nav(page).getByRole("button", { name, exact: true })).toBeVisible();
   }
   await expect(nav(page).getByRole("link", { name: "Settings", exact: true })).toBeVisible();

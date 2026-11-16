@@ -404,11 +404,11 @@ export default function DockerHostDetail() {
         <Link to="/containers" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div>
+        <div className="min-w-0">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Docker Host</p>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{hostname}</h1>
-            <Badge variant={status.variant}>{status.label.toUpperCase()}</Badge>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="min-w-0 break-all text-2xl font-semibold">{hostname}</h1>
+            <Badge variant={status.variant} className="shrink-0">{status.label.toUpperCase()}</Badge>
           </div>
         </div>
       </div>

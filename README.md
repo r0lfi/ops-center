@@ -45,7 +45,7 @@ Ops Center combines:
 - 🧑‍💻 A Developer Agent that writes new agent tools as reviewable patches
 - 🙋 An optional personal agent with its own memory and routines
 - 🏢 Interactive **2D plan and 3D office** on the Ops Floor
-- ⌨️ `opstui`, a terminal interface for the same agents, tasks and approvals
+- ⌨️ [`opstui`](#opstui), a terminal interface for the same agents, tasks and approvals
 - 📡 Optional integrations such as Nextcloud Talk and external AI providers (Anthropic, OpenAI, Mistral, Ollama and OpenAI-compatible endpoints)
 
 > **Project status:** Ops Center is under active development. Validate it in a lab environment before using it against production infrastructure.
@@ -75,7 +75,7 @@ The largest update since the first public release. The sections below and the
 | **Monitoring** | Native host and container monitoring from Prometheus with scoped detail pages; overview, monitoring and security numbers agree. | [Configure monitoring](#configure-your-own-monitoring) |
 | **Interface** | New menu, Ctrl+K command palette, filters in the URL, settings in tabs, one date/number format, every page usable on phones. | [Screenshots](docs/screenshots.md) |
 | **Sessions** | Access tokens only in memory, rotating HttpOnly refresh cookie, *Remember me* for 30 days, revocation and re-authentication for sensitive actions. | [Security](docs/security.md#browser-sessions-remember-me-and-re-authentication) |
-| **Terminal interface** | `opstui` (Rust/Ratatui): dashboard, agents, tasks, approvals with exact diffs, chat and the Ops Floor in a terminal. | [tui/README.md](tui/README.md) |
+| **Terminal interface** | `opstui` (Rust/Ratatui): dashboard, agents, tasks, approvals with exact diffs, chat and the Ops Floor in a terminal. | [opstui](#opstui) |
 
 | Ops Floor, 3D office | AI overview |
 | --- | --- |
@@ -149,6 +149,44 @@ Tool and target names of personal work are kept off the shared floor; other
 users see only that a personal agent is busy.
 
 The goal is not simply to create another dashboard. The goal is to build a **self-hosted operations workspace where humans, automation and AI agents can work together**.
+
+---
+
+<a id="opstui"></a>
+
+## ⌨️ Terminal interface (opstui)
+
+`opstui` is a terminal interface for Ops Center's AI agents, written in Rust
+with Ratatui. It signs in to the same API as the web interface and uses the same
+sessions and roles, so agents, tasks, approvals, chat and history are the same
+records in both. There is no separate agent or memory system, and opstui never
+approves anything on its own.
+
+![opstui dashboard with example agents, a running investigation and a pending approval](docs/images/features/opstui-dashboard.png)
+
+| View (key) | What it shows |
+| --- | --- |
+| **Dashboard** `1` | Agent counts, agents grouped as Ops, External and Personal, the active task with its steps, live activity, the task queue, pending approvals and a chat panel |
+| **Agents** `2` / **Tasks** `3` | Every agent with status, model and tools; tasks with their board, stop (`x`) and resume (`R`) |
+| **Approvals** `4` | Agent actions with exact arguments, and Developer Agent changes with full diff, tests and security checks; `a` approves, `r` rejects, `c` requests changes |
+| **Logs** `5` / **History** `7` | Live agent events from the event stream, filterable by agent, severity and AI traffic |
+| **Chat** `6` | Talk to any agent, with the same conversations as the web chat |
+| **Ops Floor** `9` | The 2D plan in the terminal: rooms, desks, figures, delegation lines and handovers |
+
+![opstui Ops Floor with rooms, agent figures and delegation lines](docs/images/features/opstui-floor.png)
+
+It can also run **local Claude Code sessions** as agents next to the Ops Center
+agents, with permission prompts and questions answered in the terminal.
+
+Install (Podman is enough; Rust builds inside a container):
+
+```bash
+cd tui
+./install.sh            # checks, tests, release build, installs ~/.local/bin/opstui
+opstui --server https://ops.example.com
+```
+
+Configuration, every key and the API endpoints it uses are in [tui/README.md](tui/README.md).
 
 ---
 

@@ -61,11 +61,12 @@ test("IM investigation link opens its report without marking the incident resolv
   } }));
   await page.route("**/api/ai/tasks?*", route => route.fulfill({ json: [] }));
   await page.route("**/api/ai/tasks/synthetic-task", route => route.fulfill({ json: { id: "synthetic-task", agent_id: agent.id, source: "incident", status: "completed", input_message: "Investigate IM-000042", response_message: "Capacity checked. Expansion requires approval.", error_message: null } }));
+  await page.route("**/api/ai/tasks/synthetic-task/board", route => route.fulfill({ json: { task_id: "synthetic-task", status: "completed", outcome: null, resumable: false, resumed_by: null, items: [], findings: [], proposals: [], actions: [] } }));
   await page.goto("/incidents/42");
   await page.getByRole("link", { name: "View investigation and findings" }).click();
   await expect(page).toHaveURL(/task=synthetic-task/);
   await expect(page.getByText("Capacity checked. Expansion requires approval.")).toBeVisible();
-  await expect(page.getByText(/before marking the incident resolved/)).toBeVisible();
+  await expect(page.getByText(/A completed investigation is a report/)).toBeVisible();
 });
 
 test("unpriced usage is distinguished from an exhausted money allowance", async ({ page }) => {

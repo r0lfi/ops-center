@@ -23,14 +23,22 @@ test("a remembered browser opens signed in, keeps the token out of storage and r
   await setup(page);
   const refreshes: { csrf?: string; cookie?: string }[] = [];
   await page.route("**/api/auth/refresh", async route => {
-    refreshes.push({ csrf: route.request().headers()["x-requested-with"], cookie: route.request().headers().cookie });
+    // allHeaders(): WebKit leaves the Cookie header out of headers().
+    const headers = await route.request().allHeaders();
+    refreshes.push({ csrf: headers["x-requested-with"], cookie: headers.cookie });
     const now = await page.evaluate(() => Date.now());
     await route.fulfill({ json: { access_token: token(now / 1000 + 15 * 60), role: "viewer", username: "Dashboard Test", remember: true } });
   });
   await page.goto("/wallboard");
   await expect(page.getByRole("heading", { name: "Ops Center Wallboard" })).toBeVisible();
   expect(refreshes[0]).toMatchObject({ csrf: "ops-center" });
-  expect(refreshes[0].cookie).toContain("ops_refresh=remembered");
+  // WebKit does not expose cookies on intercepted requests; check the browser's
+  // cookie for the refresh path there, and the header everywhere else.
+  if (test.info().project.name.includes("webkit")) {
+    expect(await page.context().cookies("http://127.0.0.1:4175/api/auth/refresh")).toContainEqual(expect.objectContaining({ name: "ops_refresh", value: "remembered" }));
+  } else {
+    expect(refreshes[0].cookie).toContain("ops_refresh=remembered");
+  }
   for (let i = 2; i <= 4; i++) {
     await tick(page, 14 * 60 * 1000);
     await expect.poll(() => refreshes.length).toBe(i);

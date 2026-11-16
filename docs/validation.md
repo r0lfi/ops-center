@@ -29,11 +29,17 @@ Run locally against the merged source before publication:
 - Migrations: clean `alembic upgrade head` through `0066`, `downgrade 0041` and
   upgrade again; MCP integration and catalog tests (19) passed; traffic database
   verification passed.
-- Frontend: lint (0 errors, 2 existing hook-dependency warnings), production
-  build, and 272 Playwright cases passed (1 skipped) across desktop, mobile,
-  tablet, iPad/iPhone WebKit and Android Chrome projects.
+- Frontend: lint (0 errors, 2 existing hook-dependency warnings) and production
+  build. The first CI run showed 30 browser cases (14 distinct tests) that no
+  longer matched the redesigned interface: renamed tabs, the MCP page in
+  Settings, the investigation board, the health-checked offline overlay and the
+  sixth menu group. The tests were updated, two interface issues were fixed
+  (tab names readable by assistive technology, a host name that overflowed at
+  320 px), and the whole suite (348 cases, Chromium and WebKit) was rerun in the
+  official Playwright 1.58.2 container; WebKit cannot start on the build host itself.
 - Rust: `ai_traffic_collector` 12 tests; opstui `cargo fmt --check`, `clippy -D
-  warnings` and 54 tests, all in the AlmaLinux 10.2 build container.
+  warnings` and 54 tests, all in the AlmaLinux 10.2 build container. CI's newer
+  clippy found one more lint, fixed before the release.
 - Compose configuration (with the `ai-traffic` and `host-metrics` profiles),
   installer and HA installer syntax and all 36 bundled playbooks passed.
 - `scripts/check-release.py` passed for 807 indexed files; Gitleaks found no
