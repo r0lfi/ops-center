@@ -67,8 +67,9 @@ first. **Migrations `0043`–`0066` run on start, and every browser signs in onc
 - Worker and API images install with pinned dependency constraints.
 - README screenshots are regenerated from the current interface, with new images
   for the Ops Floor, AI overview, AI Traffic Monitor, incidents, Developer Agent,
-  personal agent, command palette and phone layout. The animated GIF of the old
-  3D scene is removed.
+  personal agent, command palette and phone layout. The animated README image
+  of the old 3D scene is replaced by an animated 2D plan rendered from the
+  synthetic fixture (`frontend/scripts/frames-to-gif.py`).
 
 ### Upgrade notes
 

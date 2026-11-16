@@ -20,7 +20,7 @@
 
 ## What is Ops Center?
 
-![Ops Center: the 3D Ops Floor office with example agents at work](docs/images/features/ops-floor-3d.png)
+![Ops Center: the Ops Floor 2D plan with example agents delegating, running tools and waiting for approval](docs/images/ops-floor.gif)
 
 **Ops Center** is an open-source, self-hosted operations platform that brings infrastructure management, automation, observability, security and AI-assisted operations into one interface.
 
@@ -77,9 +77,9 @@ The largest update since the first public release. The sections below and the
 | **Sessions** | Access tokens only in memory, rotating HttpOnly refresh cookie, *Remember me* for 30 days, revocation and re-authentication for sensitive actions. | [Security](docs/security.md#browser-sessions-remember-me-and-re-authentication) |
 | **Terminal interface** | `opstui` (Rust/Ratatui): dashboard, agents, tasks, approvals with exact diffs, chat and the Ops Floor in a terminal. | [tui/README.md](tui/README.md) |
 
-| Ops Floor, 2D plan | AI overview |
+| Ops Floor, 3D office | AI overview |
 | --- | --- |
-| ![Ops Floor 2D plan with example agents, one pending approval and the external crew](docs/images/features/ops-floor.png) | ![AI overview with agents at work, a pending approval and live activity](docs/images/features/ai-overview.png) |
+| ![Ops Floor 3D office with example agents at their desks](docs/images/features/ops-floor-3d.png) | ![AI overview with agents at work, a pending approval and live activity](docs/images/features/ai-overview.png) |
 | **AI Traffic Monitor** | **Incidents** |
 | ![AI Traffic Monitor live map with example connections](docs/images/features/ai-traffic.png) | ![Incident list with four fictional incidents](docs/images/features/incidents.png) |
 | **Developer Agent** | **Personal agent** |

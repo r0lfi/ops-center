@@ -2,7 +2,7 @@
 // Run from frontend after npm ci, npm run build and Playwright installation.
 // This script never loads an .env file, contacts an API backend or executes work.
 import http from "node:http";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, rm } from "node:fs/promises";
 import { resolve, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -104,6 +104,33 @@ const aiTrafficMap = {since:iso(3600),generated_at:iso(),truncated:false,group_l
   aiMapGroup(7,null,null,"198.51.100.53",53,"internal","ok",640,null,"DNS")],
   countries:[{country:"United States",count:412,bytes:4e6,problems:0},{country:"France",count:18,bytes:2e5,problems:0},{country:"Netherlands",count:9,bytes:9e4,problems:9},{country:"Japan",count:3,bytes:1e4,problems:3}],
   coverage:[{node:"ops-host",area:"Passive network capture",status:"ok",detail:"Synthetic example"},{node:null,area:"Firewall drop logs (rule that blocked)",status:"missing",detail:"Not exported in this example"}]};
+// Scripted agent activity for the animated Ops Floor capture only: [seconds, event].
+// Played over the agent event stream; every other capture gets a silent stream.
+const floorTimeline = [
+  [0.4,{agent:"coordinator",status:"working",activity:"Planning the slow-application investigation",event:"task_started",task_id:id(70)}],
+  [1.6,{agent:"coordinator",status:"working",activity:"Asking Network to probe the upstream API",event:"delegated",peer:"network",task_id:id(70)}],
+  [2.2,{agent:"network",status:"working",activity:"Probing the example upstream API",event:"tool_started",tool:"run_diagnostic",task_id:id(70)}],
+  [3.2,{agent:"coordinator",status:"working",activity:"Asking Monitoring for latency alerts",event:"delegated",peer:"monitoring",task_id:id(70)}],
+  [3.8,{agent:"monitoring",status:"working",activity:"Correlating latency with example alerts",event:"tool_started",tool:"query_metrics",task_id:id(70)}],
+  [4.8,{agent:"ext-coder",status:"working",activity:"Editing example code",event:"task_started"}],
+  [5.6,{agent:"network",status:"working",activity:"Upstream latency rose from 42 ms to 180 ms",event:"returned",peer:"coordinator",task_id:id(70)}],
+  [6.0,{agent:"network",status:"idle",activity:null,event:"completed",task_id:id(70)}],
+  [6.6,{agent:"coordinator",status:"working",activity:"Asking Linux Ops to check app-demo storage",event:"delegated",peer:"linux",task_id:id(70)}],
+  [7.2,{agent:"linux",status:"working",activity:"Reviewing synthetic filesystem metrics",event:"tool_started",tool:"get_server_metrics",task_id:id(70)}],
+  [8.2,{agent:"security",status:"working",activity:"Checking example advisories",event:"task_started"}],
+  [8.8,{agent:"linux",status:"waiting",activity:"Expand /data on app-demo by 10 GiB",event:"approval_requested",task_id:id(70)}],
+  [9.8,{agent:"monitoring",status:"working",activity:"No alert matches the latency window",event:"returned",peer:"coordinator",task_id:id(70)}],
+  [10.2,{agent:"monitoring",status:"idle",activity:null,event:"completed",task_id:id(70)}],
+  [10.8,{agent:"ext-reviewer",status:"working",activity:"Reviewing the example change",event:"task_started"}],
+  [11.6,{agent:"security",status:"idle",activity:null,event:"completed"}],
+];
+let streamScript = null;
+const streams = [];
+// Starts the scripted events on every open agent stream, in time with the first frame.
+const playTimeline = () => {
+  const started=Date.now();
+  for(const res of streams) for(const [at,event] of streamScript) setTimeout(()=>{if(!res.writableEnded) res.write(`data: ${JSON.stringify({target:null,task_id:null,...event,ts:now+(Date.now()-started)/1000})}\n\n`);},at*1000);
+};
 const fixtures = {
   "/api/health":{status:"ok",app:"Ops Center",components:{database:"ok",redis:"ok",loki:"ok",security_feeds:"ok"}},
   "/api/auth/me":{id:id(120),username:"demo-admin",role:"admin",is_active:true},
@@ -145,6 +172,13 @@ const server = http.createServer(async (req,res) => {
     if(Object.hasOwn(fixtures,path)) return json(fixtures[path]);
     const patchHost=hosts.find(h=>path===`/api/hosts/${h.id}/patches`);
     if(patchHost) {const hostPatches=patches.filter(p=>p.host_id===patchHost.id);return json({id:id(140),host_id:patchHost.id,status:"completed",pending_count:hostPatches.length,pending_security_count:hostPatches.length,reboot_required:false,started_at:iso(600),completed_at:iso(590),created_at:iso(600),patches:hostPatches});}
+    if(path==="/api/ai/agents/stream"&&streamScript) {
+      res.writeHead(200,{"Content-Type":"text/event-stream","Cache-Control":"no-store"});
+      // Replay: everyone starts quiet, as after a restart of the stream.
+      for(const a of agents) res.write(`data: ${JSON.stringify({agent:a.slug,status:"idle",activity:null,target:null,task_id:null})}\n\n`);
+      streams.push(res);
+      return;
+    }
     if(path.includes("/events")||path.endsWith("/stream")) {res.writeHead(200,{"Content-Type":"text/event-stream"});res.write(": synthetic fixture\n\n");return;}
     missing.add(path);return json({detail:"No synthetic fixture for this endpoint"},404);
   }
@@ -185,6 +219,7 @@ const captures = [
   {name:"personal-agent",path:"/ai-agents/nova",ready:"Personal agent (Nova)",height:1100},
   {name:"command-palette",path:"/",ready:"Overview",height:800,after:async p=>{await p.keyboard.press("Control+k");await p.getByRole("dialog").waitFor();await p.keyboard.type("agent");}},
   {name:"mobile",path:"/ai-agents/ops-floor",ready:"Ops Floor",width:390,height:844,mobile:true},
+  {name:"ops-floor-live",path:"/ai-agents/ops-floor",ready:"Ops Floor",height:1270,animate:{seconds:12.5,interval:120,clip:{x:0,y:140,width:1440,height:1120}}},
   {name:"pwa-install",path:"/login",ready:"Ops Center",width:1024,height:1024,ipad:true,after:async p=>p.getByRole("button",{name:"Add to Home Screen",exact:true}).click()},
   {name:"pwa-offline",path:"/",ready:"Overview",width:1024,height:800,after:async p=>{await p.route("**/api/health",r=>r.fulfill({status:503,body:""}));await p.evaluate(()=>window.dispatchEvent(new Event("ops-backend-unavailable")));await p.getByRole("alertdialog").waitFor();}},
 ];
@@ -196,7 +231,7 @@ try {
   const selected = new Set(process.argv.slice(2));
   for (const name of selected) if (!captures.some(s => s.name === name)) throw new Error(`Unknown screenshot: ${name}`);
   for(const shot of captures.filter(s => !selected.size || selected.has(s.name))) {
-    const context=await browser.newContext({viewport:{width:shot.width||1440,height:shot.height||1000},deviceScaleFactor:1,locale:"en-US",timezoneId:"UTC",colorScheme:"dark",reducedMotion:"reduce",serviceWorkers:"block",...(shot.mobile?{isMobile:true,hasTouch:true,deviceScaleFactor:2}:{}),...(shot.ipad?{hasTouch:true,userAgent:"Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1"}:{})});
+    const context=await browser.newContext({viewport:{width:shot.width||1440,height:shot.height||1000},deviceScaleFactor:1,locale:"en-US",timezoneId:"UTC",colorScheme:"dark",reducedMotion:shot.animate?"no-preference":"reduce",serviceWorkers:"block",...(shot.mobile?{isMobile:true,hasTouch:true,deviceScaleFactor:2}:{}),...(shot.ipad?{hasTouch:true,userAgent:"Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1"}:{})});
     // All application requests stay on the loopback fixture. Only generic world
     // basemap tiles may leave it; no example observations are sent to this host.
     await context.route("**/*",route=>{
@@ -207,7 +242,10 @@ try {
     await context.addInitScript(()=>{localStorage.setItem("ops_navigation_open","true");});
     const page=await context.newPage();
     page.on("pageerror",e=>errors.push(`${shot.name}: ${e.message}`));
-    await page.clock.setFixedTime(new Date(now*1000));
+    if(shot.animate) {await page.clock.install({time:new Date(now*1000)});await page.clock.resume();}
+    else await page.clock.setFixedTime(new Date(now*1000));
+    streamScript = shot.animate ? floorTimeline : null;
+    streams.length = 0;
     // Live views hold an event stream open, so the network never goes idle there.
     await page.goto(origin+shot.path,{waitUntil:"load"});
     await page.waitForLoadState("networkidle",{timeout:5000}).catch(()=>{});
@@ -218,6 +256,22 @@ try {
     await page.waitForTimeout(1800);
     // This capture-only label is not installed in the application.
     await page.evaluate(()=>{const label=document.createElement("div");label.textContent="DOCUMENTATION DEMO · SYNTHETIC EXAMPLE DATA";label.style.cssText="position:fixed;bottom:12px;left:16px;z-index:2147483647;padding:8px 12px;border:1px solid #315577;border-radius:7px;background:#07121fee;color:#bae6fd;font:600 10px system-ui;letter-spacing:1px;pointer-events:none";document.body.appendChild(label);});
+    if(shot.animate) {
+      // Frames for frames-to-gif.py, outside the repository's reviewed artwork.
+      const dir=resolve(frontend,"test-results",`${shot.name}-frames`);
+      await rm(dir,{recursive:true,force:true});await mkdir(dir,{recursive:true});
+      playTimeline();
+      const start=Date.now();let n=0;
+      while(Date.now()-start<shot.animate.seconds*1000) {
+        const t=Date.now()-start;
+        await page.screenshot({path:resolve(dir,`${String(n++).padStart(4,"0")}-${t}.png`),clip:shot.animate.clip});
+        const wait=shot.animate.interval-((Date.now()-start)-t);
+        if(wait>0) await page.waitForTimeout(wait);
+      }
+      console.log(`Captured ${n} frames to ${dir}`);
+      await context.close();
+      continue;
+    }
     await page.screenshot({path:resolve(output,`${shot.name}.png`),animations:"disabled"});
     console.log(`Captured ${shot.name}`);
     await context.close();

@@ -38,8 +38,11 @@ collection and agent collaboration start disabled.
 | PWA installation | [pwa-install.png](images/features/pwa-install.png) | In-app iPhone/iPad installation help |
 | Offline protection | [pwa-offline.png](images/features/pwa-offline.png) | Overlay hiding stale infrastructure data |
 
-The earlier animated Operations Floor illustration showed a 3D scene that has
-since been replaced and is no longer included.
+The animated [Ops Floor](images/ops-floor.gif) at the top of the README is the
+2D plan from the same fixture. The fixture plays a fixed script of agent events
+(delegation, tool use, an approval request, completion) over the agent event
+stream; the browser renders them as the application would live. Other captures
+receive a silent stream.
 
 ## Data and capture boundaries
 
@@ -76,7 +79,16 @@ npx playwright install chromium
 node scripts/capture-readme.mjs
 ```
 
-The script writes the 28 PNG files to `docs/images/features`. To refresh only
+The script writes the 28 PNG files to `docs/images/features` and the animation
+frames to `frontend/test-results/ops-floor-live-frames`. Build the GIF from those
+frames with Pillow:
+
+```bash
+node scripts/capture-readme.mjs ops-floor-live
+python3 scripts/frames-to-gif.py test-results/ops-floor-live-frames ../docs/images/ops-floor.gif
+```
+
+ To refresh only
 selected views, pass their filename stems:
 
 ```bash
