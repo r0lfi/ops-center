@@ -6,7 +6,7 @@ cd "$ROOT"
 ACTION="${1:-build}"
 ENGINE="${CONTAINER_ENGINE:-docker}"
 PREFIX="${IMAGE_PREFIX:-ops-center}"
-TAG="${IMAGE_TAG:-0.1.0}"
+TAG="${IMAGE_TAG:-0.2.0}"
 python3 scripts/check-release.py
 components=(api frontend worker ai-worker security-worker postgres-ha ai-traffic-collector)
 contexts=(backend frontend . . . ha/postgres ai_traffic_collector)

@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     mcp_allowed_origins: list[str] = Field(default_factory=list)
 
     app_name: str = "Ops Center"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
 
     secrets_root: str = "/app/secrets"
     wireguard_url: str = ""

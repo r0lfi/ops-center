@@ -25,6 +25,7 @@ IMAGES = (
     ('ai-worker', 'AI agent worker'),
     ('security-worker', 'Security scanning and Docker operations'),
     ('postgres-ha', 'PostgreSQL 17 + Patroni, only for the optional HA deployment'),
+    ('ai-traffic-collector', 'Optional passive AI Traffic Monitor collector (Compose profile `ai-traffic`)'),
 )
 
 

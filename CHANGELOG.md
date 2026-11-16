@@ -11,6 +11,8 @@ uses it as the release notes and refuses a tag without one. See
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-16
+
 The largest update since 0.1.0. Existing installations: read
 [Upgrading to the November 2026 update](README.md#upgrading-to-the-november-2026-update)
 first. **Migrations `0043`–`0066` run on start, and every browser signs in once.**
@@ -105,5 +107,6 @@ numbers; see the Git history and
 - The manual "Build or publish images" workflow is replaced by the release
   workflow; `scripts/images.sh` still builds and pushes images by hand.
 
-[Unreleased]: https://github.com/r0lfi/ops-center/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/r0lfi/ops-center/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/r0lfi/ops-center/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/r0lfi/ops-center/releases/tag/v0.1.0

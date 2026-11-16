@@ -452,7 +452,7 @@ Check out a release, so the configuration files match the images you run
 (see [Releases](https://github.com/r0lfi/ops-center/releases) for the newest):
 
 ```bash
-git clone --branch v0.1.0 https://github.com/r0lfi/ops-center.git
+git clone --branch v0.2.0 https://github.com/r0lfi/ops-center.git
 cd ops-center
 ```
 
@@ -466,7 +466,7 @@ The default inventory installs Ops Center on the machine running the installer.
 bash scripts/install.sh --ask-become-pass \
   -e ops_build_images=false \
   -e ops_image_prefix=ghcr.io/r0lfi/ops-center \
-  -e ops_image_tag=0.1.0
+  -e ops_image_tag=0.2.0
 ```
 
 **Or build the images from this checkout** (the default, and the only option
@@ -606,10 +606,10 @@ and carry OCI labels, a provenance attestation and an SBOM.
 
 | Tag | Points at | Use for |
 | --- | --- | --- |
-| `0.1.0` (also `v0.1.0`) | Exactly that release, never moved | **Production** |
+| `0.2.0` (also `v0.2.0`) | Exactly that release, never moved | **Production** |
 | `0.1`, `0` | Newest stable release in that series | Following patch or minor updates |
 | `latest` | Newest stable release | Trying Ops Center |
-| `0.2.0-rc.1` | A prerelease; never `latest` | Testing a release candidate |
+| `0.3.0-rc.1` | A prerelease; never `latest` | Testing a release candidate |
 
 Pin an exact version in production. A release can contain database migrations,
 so upgrade deliberately, not whenever `latest` moves. Use the same version for
@@ -623,14 +623,14 @@ supported way to set it up. To run Compose yourself on a host with Docker Engine
 and Compose v2:
 
 ```bash
-git clone --branch v0.1.0 https://github.com/r0lfi/ops-center.git
+git clone --branch v0.2.0 https://github.com/r0lfi/ops-center.git
 cd ops-center
 
 # Persistent data directories, owned by the users the containers run as.
 sudo sh scripts/prepare-data-dirs.sh /var/lib/ops-center
 
 # .env with freshly generated secrets (mode 0600); an existing .env is kept.
-printf '{"DATA_ROOT": "/var/lib/ops-center", "DOCKER_GID": "%s", "IMAGE_PREFIX": "ghcr.io/r0lfi/ops-center", "IMAGE_TAG": "0.1.0"}' \
+printf '{"DATA_ROOT": "/var/lib/ops-center", "DOCKER_GID": "%s", "IMAGE_PREFIX": "ghcr.io/r0lfi/ops-center", "IMAGE_TAG": "0.2.0"}' \
   "$(stat -c %g /var/run/docker.sock)" | python3 scripts/generate-env.py .env
 
 docker compose pull
@@ -655,9 +655,9 @@ configuration. Use Compose or the installer. Individual images can be pulled
 and inspected directly:
 
 ```bash
-docker pull ghcr.io/r0lfi/ops-center/api:0.1.0
+docker pull ghcr.io/r0lfi/ops-center/api:0.2.0
 docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' \
-  ghcr.io/r0lfi/ops-center/api:0.1.0
+  ghcr.io/r0lfi/ops-center/api:0.2.0
 ```
 
 ### Ports
@@ -706,11 +706,11 @@ integrations and HA settings, documented in [`.env.example`](.env.example).
    `.env`, the data directory and existing administrators:
 
    ```bash
-   git fetch --tags && git checkout v0.2.0
+   git fetch --tags && git checkout v0.3.0
    bash scripts/install.sh --ask-become-pass \
      -e ops_build_images=false \
      -e ops_image_prefix=ghcr.io/r0lfi/ops-center \
-     -e ops_image_tag=0.2.0
+     -e ops_image_tag=0.3.0
    ```
 
    With Compose alone: update the checkout, set `IMAGE_TAG` in `.env`, then
@@ -723,7 +723,7 @@ does not undo them: to roll back, restore the backup taken before the upgrade.
 
 ```bash
 export IMAGE_PREFIX=registry.example.com/ops-center
-export IMAGE_TAG=0.1.0
+export IMAGE_TAG=0.2.0
 bash scripts/images.sh build
 bash scripts/images.sh push    # only when you intend to publish
 ```
